@@ -1,1 +1,3 @@
-module github.com/asergeyev/nradix
+module github.com/k-danil/nradix
+
+go 1.21.1
