@@ -10,7 +10,7 @@ import (
 )
 
 func TestTree(t *testing.T) {
-	tr := NewTree[int](0)
+	tr := NewTree[int]()
 	if tr == nil || tr.root == nil {
 		t.Error("Did not create tree properly")
 	}
@@ -170,7 +170,7 @@ func TestTree(t *testing.T) {
 }
 
 func TestSet(t *testing.T) {
-	tr := NewTree[int](0)
+	tr := NewTree[int]()
 	if tr == nil || tr.root == nil {
 		t.Error("Did not create tree properly")
 	}
@@ -248,7 +248,7 @@ func TestSet(t *testing.T) {
 }
 
 func TestRegression(t *testing.T) {
-	tr := NewTree[int](0)
+	tr := NewTree[int]()
 	if tr == nil || tr.root == nil {
 		t.Error("Did not create tree properly")
 	}
@@ -266,7 +266,7 @@ func TestRegression(t *testing.T) {
 }
 
 func TestTree6(t *testing.T) {
-	tr := NewTree[int](0)
+	tr := NewTree[int]()
 	if tr == nil || tr.root == nil {
 		t.Error("Did not create tree properly")
 	}
@@ -318,7 +318,7 @@ func TestTree6(t *testing.T) {
 }
 
 func TestRegression6(t *testing.T) {
-	tr := NewTree[int](0)
+	tr := NewTree[int]()
 	if tr == nil || tr.root == nil {
 		t.Error("Did not create tree properly")
 	}
