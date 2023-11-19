@@ -6,7 +6,6 @@ package nradix
 
 import (
 	"errors"
-	"net"
 )
 
 // Tree implements radix tree for working with IP/mask. Thread safety is not guaranteed, you should choose your own style of protecting safety of operations.
@@ -19,9 +18,11 @@ type Tree[T any] struct {
 }
 
 const (
-	startBit  uint32 = 1 << 31
-	startByte byte   = 1 << 7
+	uint32StartBit  uint32 = 1 << 31
+	uint128StartBit uint64 = 1 << 63
 )
+
+type uint128 [2]uint64
 
 var (
 	ErrNodeBusy = errors.New("node busy")
@@ -41,12 +42,7 @@ func NewTree[T any](preallocate uint64, ipv6 bool) (t *Tree[T]) {
 	return
 }
 
-// AddCIDR adds value associated with IP/mask to the tree. Will return error for invalid CIDR or if value already exists.
 func (t *Tree[T]) AddCIDR(cidr string, val T) error {
-	return t.AddCIDRb([]byte(cidr), val)
-}
-
-func (t *Tree[T]) AddCIDRb(cidr []byte, val T) error {
 	if !t.ipv6 {
 		ip, mask, err := parseCIDR4(cidr)
 		if err != nil {
@@ -61,12 +57,7 @@ func (t *Tree[T]) AddCIDRb(cidr []byte, val T) error {
 	return t.insert128(ip, mask, val, false)
 }
 
-// SetCIDR set value associated with IP/mask to the tree. Will return error for invalid CIDR.
 func (t *Tree[T]) SetCIDR(cidr string, val T) error {
-	return t.SetCIDRb([]byte(cidr), val)
-}
-
-func (t *Tree[T]) SetCIDRb(cidr []byte, val T) error {
 	if !t.ipv6 {
 		ip, mask, err := parseCIDR4(cidr)
 		if err != nil {
@@ -81,13 +72,7 @@ func (t *Tree[T]) SetCIDRb(cidr []byte, val T) error {
 	return t.insert128(ip, mask, val, true)
 }
 
-// DeleteWholeRangeCIDR removes all values associated with IPs
-// in the entire subnet specified by the CIDR.
 func (t *Tree[T]) DeleteWholeRangeCIDR(cidr string) error {
-	return t.DeleteWholeRangeCIDRb([]byte(cidr))
-}
-
-func (t *Tree[T]) DeleteWholeRangeCIDRb(cidr []byte) error {
 	if !t.ipv6 {
 		ip, mask, err := parseCIDR4(cidr)
 		if err != nil {
@@ -102,12 +87,7 @@ func (t *Tree[T]) DeleteWholeRangeCIDRb(cidr []byte) error {
 	return t.delete128(ip, mask, true)
 }
 
-// DeleteCIDR removes value associated with IP/mask from the tree.
 func (t *Tree[T]) DeleteCIDR(cidr string) error {
-	return t.DeleteCIDRb([]byte(cidr))
-}
-
-func (t *Tree[T]) DeleteCIDRb(cidr []byte) error {
 	if !t.ipv6 {
 		ip, mask, err := parseCIDR4(cidr)
 		if err != nil {
@@ -122,12 +102,7 @@ func (t *Tree[T]) DeleteCIDRb(cidr []byte) error {
 	return t.delete128(ip, mask, false)
 }
 
-// FindCIDR traverses tree to proper Node and returns previously saved information in longest covered IP.
-func (t *Tree[T]) FindCIDR(cidr string) (T, error) {
-	return t.FindCIDRb([]byte(cidr))
-}
-
-func (t *Tree[T]) FindCIDRb(cidr []byte) (val T, err error) {
+func (t *Tree[T]) FindCIDR(cidr string) (val T, err error) {
 	var found bool
 	if !t.ipv6 {
 		var ip, mask uint32
@@ -139,8 +114,7 @@ func (t *Tree[T]) FindCIDRb(cidr []byte) (val T, err error) {
 		}
 		return
 	}
-	var ip net.IP
-	var mask net.IPMask
+	var ip, mask uint128
 	if ip, mask, err = parseCIDR6(cidr); err != nil {
 		return
 	}

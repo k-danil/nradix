@@ -1,11 +1,9 @@
 package nradix
 
-import "net"
-
-func (t *Tree[T]) insert128(ip net.IP, mask net.IPMask, val T, overwrite bool) (err error) {
+func (t *Tree[T]) insert128(ip, mask uint128, val T, overwrite bool) (err error) {
 	n := t.root
-	for i := 0; i < len(ip) && mask[i] != 0; i++ {
-		for bit := startByte; bit&mask[i] != 0; bit >>= 1 {
+	for i := 0; i < len(mask); i++ {
+		for bit := uint128StartBit; mask[i]&bit != 0; bit >>= 1 {
 			var next *node[T]
 			if next = n.getNext(ip[i]&bit != 0); next == nil {
 				next = n.setNext(ip[i]&bit != 0, t.newNode())
@@ -22,10 +20,10 @@ func (t *Tree[T]) insert128(ip net.IP, mask net.IPMask, val T, overwrite bool) (
 	return
 }
 
-func (t *Tree[T]) delete128(ip net.IP, mask net.IPMask, wholeRange bool) (err error) {
+func (t *Tree[T]) delete128(ip, mask uint128, wholeRange bool) (err error) {
 	n := t.root
-	for i := 0; i < len(ip); i++ {
-		for bit := startByte; bit&mask[i] != 0; bit >>= 1 {
+	for i := 0; i < len(mask); i++ {
+		for bit := uint128StartBit; mask[i]&bit != 0; bit >>= 1 {
 			if n = n.getNext(ip[i]&bit != 0); n == nil {
 				return ErrNotFound
 			}
@@ -49,12 +47,12 @@ func (t *Tree[T]) delete128(ip net.IP, mask net.IPMask, wholeRange bool) (err er
 	}
 }
 
-func (t *Tree[T]) find128(ip net.IP, mask net.IPMask) (T, bool) {
+func (t *Tree[T]) find128(ip, mask uint128) (T, bool) {
 	n := t.root
 	val, found := n.val, n.set
 
-	for i := 0; i < len(ip) && mask[i] != 0; i++ {
-		for bit := startByte; mask[i]&bit != 0; bit >>= 1 {
+	for i := 0; i < len(mask); i++ {
+		for bit := uint128StartBit; mask[i]&bit != 0; bit >>= 1 {
 			if n = n.getNext(ip[i]&bit != 0); n == nil {
 				return val, found
 			}

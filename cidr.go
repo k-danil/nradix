@@ -1,23 +1,20 @@
 package nradix
 
 import (
-	"bytes"
+	"encoding/binary"
 	"net"
+	"strings"
 )
 
 const ipv4HostMask = 0xffffffff
 
-var (
-	ipv6HostMask = net.IPMask{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
-)
-
-func loadIP4(ipStr []byte) (ip uint32, err error) {
+func loadIP4(ipStr string) (ip uint32, err error) {
 	var (
-		oct    uint32
-		b, num byte
+		oct uint32
+		num byte
 	)
 
-	for _, b = range ipStr {
+	for _, b := range []byte(ipStr) {
 		if b == '.' {
 			if oct > 255 {
 				return 0, ErrBadIP
@@ -42,9 +39,9 @@ func loadIP4(ipStr []byte) (ip uint32, err error) {
 	return
 }
 
-func parseCIDR4(cidr []byte) (ip, mask uint32, err error) {
-	if p := bytes.IndexByte(cidr, '/'); p > 0 {
-		for _, c := range cidr[p+1:] {
+func parseCIDR4(cidr string) (ip, mask uint32, err error) {
+	if p := strings.IndexByte(cidr, '/'); p > 0 {
+		for _, c := range []byte(cidr[p+1:]) {
 			c -= '0'
 			if c > 9 {
 				return 0, 0, ErrBadIP
@@ -63,23 +60,50 @@ func parseCIDR4(cidr []byte) (ip, mask uint32, err error) {
 	return
 }
 
-func parseCIDR6(cidr []byte) (ip net.IP, mask net.IPMask, err error) {
-	if p := bytes.IndexByte(cidr, '/'); p > 0 {
-		var ipm *net.IPNet
-		if _, ipm, err = net.ParseCIDR(string(cidr)); err != nil {
-			return
+func parseCIDR6(cidr string) (ip, mask uint128, err error) {
+	var maskLen uint32
+	if p := strings.IndexByte(cidr, '/'); p > 0 {
+		for _, c := range []byte(cidr[p+1:]) {
+			c -= '0'
+			if c > 9 {
+				err = ErrBadIP
+				return
+			}
+			maskLen = maskLen*10 + uint32(c)
 		}
-		ip, mask = ipm.IP.To16(), ipm.Mask
-		if len(mask) == net.IPv4len {
-			mask = append(ipv6HostMask[:12], mask...)
-		}
-	} else {
-		if ip = net.ParseIP(string(cidr)); ip == nil {
+		if maskLen > 128 {
 			err = ErrBadIP
 			return
 		}
-		ip = ip.To16()
-		mask = ipv6HostMask
+		cidr = cidr[:p]
+	} else {
+		maskLen = 128
+	}
+
+	ipIp := net.ParseIP(cidr)
+	if ipIp == nil {
+		err = ErrBadIP
+		return
+	}
+
+	if len(ipIp) == net.IPv4len {
+		maskLen += 96
+		if maskLen > 128 {
+			err = ErrBadIP
+			return
+		}
+		ipIp = ipIp.To16()
+	}
+
+	ip[0] = binary.BigEndian.Uint64(ipIp[:8])
+	ip[1] = binary.BigEndian.Uint64(ipIp[8:])
+
+	if maskLen > 64 {
+		mask[0] = ^uint64(0)
+		mask[1] = ^uint64(0) << (128 - maskLen)
+	} else {
+		mask[0] = ^uint64(0) << (64 - maskLen)
+		mask[1] = 0
 	}
 
 	return

@@ -341,14 +341,21 @@ func BenchmarkTree_FindCIDR_ipv6(b *testing.B) {
 		log.Fatalln("Did not create tree properly")
 	}
 
-	tr.AddCIDR("2620:10f::/32", 54321)
-	tr.AddCIDR("2620:10f:d000:100::5/128", 12345)
+	tr.AddCIDR("2620:10f::/32", 1)
+	tr.AddCIDR("2620:10f:d000:100::5", 2)
 
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
-		tr.FindCIDR("2620:10f:d000:100::5")
-	}
+	b.Run("prefix", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			tr.FindCIDR("2620:10f:d000:100::5/128")
+		}
+	})
+	b.Run("no prefix", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			tr.FindCIDR("2620:10f:d000:100::5")
+		}
+	})
 }
 
 func BenchmarkTree_FindCIDR_ipv4(b *testing.B) {
@@ -359,10 +366,18 @@ func BenchmarkTree_FindCIDR_ipv4(b *testing.B) {
 
 	tr.AddCIDR("1.1.1.0/24", 1)
 	tr.AddCIDR("1.1.1.0/25", 2)
+	tr.AddCIDR("1.1.1.128", 3)
 
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
-		tr.FindCIDR("1.1.1.128")
-	}
+	b.Run("prefix", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			tr.FindCIDR("1.1.1.128/32")
+		}
+	})
+	b.Run("no prefix", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			tr.FindCIDR("1.1.1.128")
+		}
+	})
 }

@@ -2,7 +2,7 @@ package nradix
 
 func (t *Tree[T]) insert32(ip, mask uint32, val T, overwrite bool) (err error) {
 	n := t.root
-	for bit := startBit; bit&mask != 0; bit >>= 1 {
+	for bit := uint32StartBit; bit&mask != 0; bit >>= 1 {
 		var next *node[T]
 		if next = n.getNext(ip&bit != 0); next == nil {
 			next = n.setNext(ip&bit != 0, t.newNode())
@@ -20,7 +20,7 @@ func (t *Tree[T]) insert32(ip, mask uint32, val T, overwrite bool) (err error) {
 
 func (t *Tree[T]) delete32(ip, mask uint32, wholeRange bool) (err error) {
 	n := t.root
-	for bit := startBit; bit&mask != 0; bit >>= 1 {
+	for bit := uint32StartBit; bit&mask != 0; bit >>= 1 {
 		if n = n.getNext(ip&bit != 0); n == nil {
 			return ErrNotFound
 		}
@@ -47,7 +47,7 @@ func (t *Tree[T]) find32(ip, mask uint32) (T, bool) {
 	n := t.root
 	val, found := n.val, n.set
 
-	for bit := startBit; mask&bit != 0; bit >>= 1 {
+	for bit := uint32StartBit; mask&bit != 0; bit >>= 1 {
 		if n = n.getNext(ip&bit != 0); n == nil {
 			return val, found
 		}
