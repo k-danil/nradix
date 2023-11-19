@@ -6,11 +6,12 @@ package nradix
 
 import (
 	"errors"
+	"log"
 	"testing"
 )
 
 func TestTree(t *testing.T) {
-	tr := NewTree[int]()
+	tr := NewTree[int](0, false)
 	if tr == nil || tr.root == nil {
 		t.Error("Did not create tree properly")
 	}
@@ -170,7 +171,7 @@ func TestTree(t *testing.T) {
 }
 
 func TestSet(t *testing.T) {
-	tr := NewTree[int]()
+	tr := NewTree[int](0, false)
 	if tr == nil || tr.root == nil {
 		t.Error("Did not create tree properly")
 	}
@@ -248,7 +249,7 @@ func TestSet(t *testing.T) {
 }
 
 func TestRegression(t *testing.T) {
-	tr := NewTree[int]()
+	tr := NewTree[int](0, false)
 	if tr == nil || tr.root == nil {
 		t.Error("Did not create tree properly")
 	}
@@ -266,7 +267,7 @@ func TestRegression(t *testing.T) {
 }
 
 func TestTree6(t *testing.T) {
-	tr := NewTree[int]()
+	tr := NewTree[int](0, true)
 	if tr == nil || tr.root == nil {
 		t.Error("Did not create tree properly")
 	}
@@ -318,7 +319,7 @@ func TestTree6(t *testing.T) {
 }
 
 func TestRegression6(t *testing.T) {
-	tr := NewTree[int]()
+	tr := NewTree[int](0, true)
 	if tr == nil || tr.root == nil {
 		t.Error("Did not create tree properly")
 	}
@@ -331,5 +332,37 @@ func TestRegression6(t *testing.T) {
 		t.Errorf("Could not get /128 address from the tree, error: %s", err)
 	} else if inf != 12345 {
 		t.Errorf("Wrong value from /128 test, got %d, expected 12345", inf)
+	}
+}
+
+func BenchmarkTree_FindCIDR_ipv6(b *testing.B) {
+	tr := NewTree[int](0, true)
+	if tr == nil || tr.root == nil {
+		log.Fatalln("Did not create tree properly")
+	}
+
+	tr.AddCIDR("2620:10f::/32", 54321)
+	tr.AddCIDR("2620:10f:d000:100::5/128", 12345)
+
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		tr.FindCIDR("2620:10f:d000:100::5")
+	}
+}
+
+func BenchmarkTree_FindCIDR_ipv4(b *testing.B) {
+	tr := NewTree[int](0, false)
+	if tr == nil || tr.root == nil {
+		log.Fatalln("Did not create tree properly")
+	}
+
+	tr.AddCIDR("1.1.1.0/24", 1)
+	tr.AddCIDR("1.1.1.0/25", 2)
+
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		tr.FindCIDR("1.1.1.128")
 	}
 }

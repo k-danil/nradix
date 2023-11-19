@@ -20,8 +20,7 @@ func loadIP4(ipStr []byte) (ip uint32, err error) {
 	for _, b = range ipStr {
 		if b == '.' {
 			if oct > 255 {
-				err = ErrBadIP
-				return
+				return 0, ErrBadIP
 			}
 			num++
 			ip = ip<<8 + oct
@@ -29,35 +28,31 @@ func loadIP4(ipStr []byte) (ip uint32, err error) {
 		} else {
 			b -= '0'
 			if b > 9 {
-				err = ErrBadIP
-				return
+				return 0, ErrBadIP
 			}
 			oct = oct*10 + uint32(b)
 		}
 	}
 
 	if oct > 255 || num != 3 {
-		err = ErrBadIP
-		return
+		return 0, ErrBadIP
 	}
 	ip = ip<<8 + oct
 
 	return
 }
 
-func parseCIDR4(cidr []byte) (ip uint32, mask uint32, err error) {
+func parseCIDR4(cidr []byte) (ip, mask uint32, err error) {
 	if p := bytes.IndexByte(cidr, '/'); p > 0 {
 		for _, c := range cidr[p+1:] {
 			c -= '0'
 			if c > 9 {
-				err = ErrBadIP
-				return
+				return 0, 0, ErrBadIP
 			}
 			mask = mask*10 + uint32(c)
 		}
 		if mask > 32 {
-			err = ErrBadIP
-			return
+			return 0, 0, ErrBadIP
 		}
 		mask = ipv4HostMask << (32 - mask)
 		cidr = cidr[:p]
@@ -74,13 +69,18 @@ func parseCIDR6(cidr []byte) (ip net.IP, mask net.IPMask, err error) {
 		if _, ipm, err = net.ParseCIDR(string(cidr)); err != nil {
 			return
 		}
-		return ipm.IP, ipm.Mask, nil
+		ip, mask = ipm.IP.To16(), ipm.Mask
+		if len(mask) == net.IPv4len {
+			mask = append(ipv6HostMask[:12], mask...)
+		}
+	} else {
+		if ip = net.ParseIP(string(cidr)); ip == nil {
+			err = ErrBadIP
+			return
+		}
+		ip = ip.To16()
+		mask = ipv6HostMask
 	}
-	if ip = net.ParseIP(string(cidr)); ip == nil {
-		err = ErrBadIP
-		return
-	}
-	mask = ipv6HostMask
 
 	return
 }

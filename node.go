@@ -9,17 +9,17 @@ type node[T any] struct {
 func (n *node[T]) getNext(right bool) *node[T] {
 	if right {
 		return n.right
-	} else {
-		return n.left
 	}
+	return n.left
 }
 
-func (n *node[T]) setNext(right bool, nn *node[T]) {
+func (n *node[T]) setNext(right bool, nn *node[T]) *node[T] {
 	if right {
 		n.right = nn
 	} else {
 		n.left = nn
 	}
+	return nn
 }
 
 func (n *node[T]) setValue(val T) {
@@ -27,12 +27,17 @@ func (n *node[T]) setValue(val T) {
 	n.val = val
 }
 
-func (n *node[T]) unsetValue() {
+func (n *node[T]) unsetValue() error {
+	if !n.set {
+		return ErrNotFound
+	}
+
 	var val T
 	n.set = false
 	n.val = val
+	return nil
 }
 
 func (n *node[T]) isValuable() bool {
-	return n.right != nil || n.left != nil || n.set || n.parent == nil
+	return n.right != nil || n.left != nil || n.parent == nil
 }
