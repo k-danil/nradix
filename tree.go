@@ -22,7 +22,9 @@ const (
 	uint128StartBit uint64 = 1 << 63
 )
 
-type uint128 [2]uint64
+type uint128 struct {
+	hi, lo uint64
+}
 
 var (
 	ErrNodeBusy = errors.New("node busy")
