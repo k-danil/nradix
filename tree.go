@@ -45,85 +45,76 @@ func NewTree[T any](preallocate uint64, ipv6 bool) (t *Tree[T]) {
 }
 
 func (t *Tree[T]) AddCIDR(cidr string, val T) error {
-	if !t.ipv6 {
-		ip, mask, err := parseCIDR4(cidr)
-		if err != nil {
-			return err
-		}
-		return t.insert32(ip, mask, val, false)
-	}
-	ip, mask, err := parseCIDR6(cidr)
-	if err != nil {
-		return err
-	}
-	return t.insert128(ip, mask, val, false)
+	return t.setInternal(cidr, val, false)
 }
 
 func (t *Tree[T]) SetCIDR(cidr string, val T) error {
-	if !t.ipv6 {
+	return t.setInternal(cidr, val, true)
+}
+
+func (t *Tree[T]) setInternal(cidr string, val T, overwrite bool) error {
+	if t.ipv6 {
+		ip, mask, err := parseCIDR6(cidr)
+		if err != nil {
+			return err
+		}
+		return t.insert128(ip, mask, val, overwrite)
+	} else {
 		ip, mask, err := parseCIDR4(cidr)
 		if err != nil {
 			return err
 		}
-		return t.insert32(ip, mask, val, true)
+		return t.insert32(ip, mask, val, overwrite)
 	}
-	ip, mask, err := parseCIDR6(cidr)
-	if err != nil {
-		return err
-	}
-	return t.insert128(ip, mask, val, true)
 }
 
 func (t *Tree[T]) DeleteWholeRangeCIDR(cidr string) error {
-	if !t.ipv6 {
-		ip, mask, err := parseCIDR4(cidr)
-		if err != nil {
-			return err
-		}
-		return t.delete32(ip, mask, true)
-	}
-	ip, mask, err := parseCIDR6(cidr)
-	if err != nil {
-		return err
-	}
-	return t.delete128(ip, mask, true)
+	return t.deleteInternal(cidr, true)
 }
 
 func (t *Tree[T]) DeleteCIDR(cidr string) error {
-	if !t.ipv6 {
+	return t.deleteInternal(cidr, false)
+}
+
+func (t *Tree[T]) deleteInternal(cidr string, wholeRange bool) error {
+	if t.ipv6 {
+		ip, mask, err := parseCIDR6(cidr)
+		if err != nil {
+			return err
+		}
+		return t.delete128(ip, mask, wholeRange)
+	} else {
 		ip, mask, err := parseCIDR4(cidr)
 		if err != nil {
 			return err
 		}
-		return t.delete32(ip, mask, false)
+		return t.delete32(ip, mask, wholeRange)
 	}
-	ip, mask, err := parseCIDR6(cidr)
-	if err != nil {
-		return err
-	}
-	return t.delete128(ip, mask, false)
 }
 
-func (t *Tree[T]) FindCIDR(cidr string) (val T, err error) {
+func (t *Tree[T]) FindCIDR(cidr string) (T, error) {
 	var found bool
-	if !t.ipv6 {
-		var ip, mask uint32
-		if ip, mask, err = parseCIDR4(cidr); err != nil {
-			return
+	var val T
+	if t.ipv6 {
+		ip, mask, err := parseCIDR6(cidr)
+		if err != nil {
+			return val, err
 		}
-		if val, found = t.find32(ip, mask); !found {
-			err = ErrNotFound
+		val, found = t.find128(ip, mask)
+	} else {
+		ip, mask, err := parseCIDR4(cidr)
+		if err != nil {
+			return val, err
 		}
-		return
+		val, found = t.find32(ip, mask)
 	}
-	var ip, mask uint128
-	if ip, mask, err = parseCIDR6(cidr); err != nil {
-		return
-	}
-	if val, found = t.find128(ip, mask); !found {
+
+	var err error
+	if !found {
 		err = ErrNotFound
 	}
-	return
+
+	return val, err
 }
 
 func (t *Tree[T]) newNode() (p *node[T]) {
