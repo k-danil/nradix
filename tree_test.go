@@ -5,6 +5,7 @@
 package nradix
 
 import (
+	"net/netip"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -162,6 +163,75 @@ func TestRegression6(t *testing.T) {
 		{op: opAdd, cidr: "2620:10f::/32", val: 54321},
 		{op: opAdd, cidr: "2620:10f:d000:100::5/128", val: 12345},
 		{op: opFind, cidr: "2620:10f:d000:100::5/128", val: 12345},
+	})
+}
+
+func TestFindWithoutParsing(t *testing.T) {
+	const (
+		inRange  = 0x01020304
+		outRange = 0x01020400
+	)
+
+	for _, ipv6 := range []bool{false, true} {
+		t.Run(map[bool]string{false: "tree4", true: "tree6"}[ipv6], func(t *testing.T) {
+			tr := NewTree[int](0, ipv6)
+			require.NoError(t, tr.AddCIDR("1.2.3.0/24", 7))
+
+			got, err := tr.Find32(inRange)
+			require.NoError(t, err)
+			assert.Equal(t, 7, got)
+
+			for _, s := range []string{"1.2.3.4", "::ffff:1.2.3.4"} {
+				got, err = tr.FindAddr(netip.MustParseAddr(s))
+				require.NoError(t, err, s)
+				assert.Equal(t, 7, got, s)
+			}
+
+			_, err = tr.Find32(outRange)
+			assert.ErrorIs(t, err, ErrNotFound)
+		})
+	}
+
+	tr4 := NewTree[int](0, false)
+	for _, addr := range []netip.Addr{netip.MustParseAddr("dead::beef"), {}} {
+		_, err := tr4.FindAddr(addr)
+		assert.ErrorIs(t, err, ErrBadIP, addr.String())
+	}
+}
+
+func BenchmarkTree_FindWithoutParsing(b *testing.B) {
+	tr4 := NewTree[int](0, false)
+	tr4.AddCIDR("1.1.1.0/24", 1)
+	tr6 := NewTree[int](0, true)
+	tr6.AddCIDR("2620:10f::/32", 1)
+
+	addr4 := netip.MustParseAddr("1.1.1.128")
+	addr6 := netip.MustParseAddr("2620:10f:d000:100::5")
+
+	b.Run("ipv4/FindCIDR", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			tr4.FindCIDR("1.1.1.128")
+		}
+	})
+	b.Run("ipv4/FindAddr", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			tr4.FindAddr(addr4)
+		}
+	})
+	b.Run("ipv4/Find32", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			tr4.Find32(0x01010180)
+		}
+	})
+	b.Run("ipv6/FindCIDR", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			tr6.FindCIDR("2620:10f:d000:100::5")
+		}
+	})
+	b.Run("ipv6/FindAddr", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			tr6.FindAddr(addr6)
+		}
 	})
 }
 

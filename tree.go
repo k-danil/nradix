@@ -6,6 +6,7 @@ package nradix
 
 import (
 	"errors"
+	"net/netip"
 )
 
 // Tree implements radix tree for working with IP/mask. Thread safety is not guaranteed, you should choose your own style of protecting safety of operations.
@@ -74,7 +75,7 @@ func (t *Tree[T]) setInternal(cidr string, val T, overwrite bool) error {
 		return t.insert128(ip, mask, val, overwrite)
 	}
 
-	ip, mask, err := parseCIDR4(StringToBytes(cidr))
+	ip, mask, err := parseCIDR4(stringToBytes(cidr))
 	if err != nil {
 		return err
 	}
@@ -98,7 +99,7 @@ func (t *Tree[T]) deleteInternal(cidr string, wholeRange bool) error {
 		return t.delete128(ip, mask, wholeRange)
 	}
 
-	ip, mask, err := parseCIDR4(StringToBytes(cidr))
+	ip, mask, err := parseCIDR4(stringToBytes(cidr))
 	if err != nil {
 		return err
 	}
@@ -115,7 +116,7 @@ func (t *Tree[T]) FindCIDR(cidr string) (T, error) {
 		}
 		val, found = t.find128(ip, mask)
 	} else {
-		ip, mask, err := parseCIDR4(StringToBytes(cidr))
+		ip, mask, err := parseCIDR4(stringToBytes(cidr))
 		if err != nil {
 			return val, err
 		}
@@ -128,6 +129,48 @@ func (t *Tree[T]) FindCIDR(cidr string) (T, error) {
 	}
 
 	return val, err
+}
+
+// Find32 looks up an IPv4 host address. On an IPv6 tree the address is matched
+// in its IPv4-mapped form, the same way FindCIDR treats a bare IPv4 string.
+func (t *Tree[T]) Find32(ip uint32) (val T, err error) {
+	var found bool
+	if t.ipv6 {
+		val, found = t.find128(ip4To6(ip), mask128(ipv6MaxMaskLength))
+	} else {
+		val, found = t.find32(ip, ipv4HostMask)
+	}
+
+	if !found {
+		err = ErrNotFound
+	}
+	return
+}
+
+// FindAddr looks up a host address. An IPv4 tree accepts IPv4 and IPv4-mapped
+// addresses only and reports ErrBadIP for anything else.
+func (t *Tree[T]) FindAddr(addr netip.Addr) (val T, err error) {
+	if !addr.IsValid() {
+		err = ErrBadIP
+		return
+	}
+
+	var found bool
+	if t.ipv6 {
+		val, found = t.find128(addrTo128(addr), mask128(ipv6MaxMaskLength))
+	} else {
+		ip, ok := addrTo32(addr)
+		if !ok {
+			err = ErrBadIP
+			return
+		}
+		val, found = t.find32(ip, ipv4HostMask)
+	}
+
+	if !found {
+		err = ErrNotFound
+	}
+	return
 }
 
 func (t *Tree[T]) newNode6() (p *node6[T]) {

@@ -59,7 +59,7 @@ func TestParseCIDR4(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.cidr, func(t *testing.T) {
-			ip, mask, err := parseCIDR4(StringToBytes(tt.cidr))
+			ip, mask, err := parseCIDR4(stringToBytes(tt.cidr))
 			if tt.wantErr {
 				require.ErrorIs(t, err, ErrBadIP)
 				return
@@ -141,7 +141,7 @@ func FuzzParseCIDR4(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, cidr string) {
-		ip, mask, err := parseCIDR4(StringToBytes(cidr))
+		ip, mask, err := parseCIDR4(stringToBytes(cidr))
 		if err != nil {
 			return
 		}

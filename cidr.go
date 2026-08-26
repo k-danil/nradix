@@ -2,9 +2,9 @@ package nradix
 
 import (
 	"bytes"
+	"encoding/binary"
 	"net/netip"
 	"strings"
-	"unsafe"
 )
 
 const (
@@ -16,7 +16,28 @@ const (
 
 	ipv4OctetMax = 255
 	ipv4DotCount = 3
+
+	ipv4In6Prefix uint64 = 0xffff << 32
 )
+
+func addrTo128(addr netip.Addr) (ip uint128) {
+	b := addr.As16()
+	ip.hi = binary.BigEndian.Uint64(b[:8])
+	ip.lo = binary.BigEndian.Uint64(b[8:])
+	return
+}
+
+func addrTo32(addr netip.Addr) (ip uint32, ok bool) {
+	if !addr.Is4() && !addr.Is4In6() {
+		return
+	}
+	b := addr.As4()
+	return binary.BigEndian.Uint32(b[:]), true
+}
+
+func ip4To6(ip uint32) uint128 {
+	return uint128{lo: ipv4In6Prefix | uint64(ip)}
+}
 
 func isBareIPv4(addr string) bool {
 	return strings.IndexByte(addr, ':') < 0
@@ -116,11 +137,11 @@ func parseCIDR6(cidr string) (ip, mask uint128, err error) {
 		}
 	}
 
-	var ipIp netip.Addr
-	if ipIp, err = netip.ParseAddr(cidr); err != nil {
+	var addr netip.Addr
+	if addr, err = netip.ParseAddr(cidr); err != nil {
 		return uint128{}, uint128{}, ErrBadIP
 	}
-	ip = *(*uint128)(unsafe.Pointer(&ipIp))
+	ip = addrTo128(addr)
 
 	return
 }
