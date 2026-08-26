@@ -35,6 +35,32 @@ func (t *tree6[T]) newNode() (p *node6[T]) {
 
 // release clears the node so a freed prefix stops keeping its value alive;
 // right doubles as the free-list link.
+func countnode6[T any](n *node6[T]) int {
+	if n == nil {
+		return 0
+	}
+	return 1 + countnode6(n.left) + countnode6(n.right)
+}
+
+// clone copies the subtree depth first, so a node and its descendants land in
+// the arena next to each other.
+func (t *tree6[T]) clone(src *node6[T]) (dst *node6[T]) {
+	if src == nil {
+		return
+	}
+	dst = t.newNode()
+	*dst = *src
+	dst.left = t.clone(src.left)
+	dst.right = t.clone(src.right)
+	return
+}
+
+func (t *tree6[T]) compact() {
+	fresh := &tree6[T]{alloc: make([]node6[T], 0, countnode6(t.root))}
+	fresh.root = fresh.clone(t.root)
+	*t = *fresh
+}
+
 func (t *tree6[T]) release(n *node6[T]) {
 	*n = node6[T]{right: t.free}
 	t.free = n
@@ -100,7 +126,27 @@ func (t *tree6[T]) split(child *node6[T], c uint8, ip uint128, plen uint8, val T
 	return
 }
 
+// findHost drops the checks that cannot fire when the query is a full /128.
+func (t *tree6[T]) findHost(ip uint128) (val T, found bool) {
+	for n := t.root; n != nil; n = n.getNext(bit128(ip, n.plen)) {
+		if cpl128(n.prefix, ip) < n.plen {
+			return
+		}
+		if n.set {
+			val, found = n.val, true
+		}
+		if n.plen == ipv6MaxMaskLength {
+			return
+		}
+	}
+	return
+}
+
 func (t *tree6[T]) find(ip, mask uint128) (val T, found bool) {
+	if mask == fullMask128 {
+		return t.findHost(ip)
+	}
+
 	plen := plenOf128(mask)
 	ip = and128(ip, mask)
 

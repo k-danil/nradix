@@ -51,3 +51,18 @@ func ExampleTree_Find32() {
 
 	// Output: 42 <nil>
 }
+
+func ExampleTree_Compact() {
+	tree := nradix.NewTree4[int](0)
+	for i, cidr := range []string{"10.0.0.0/8", "10.1.0.0/16", "10.1.2.0/24"} {
+		tree.AddCIDR(cidr, i)
+	}
+
+	// worth doing once the table is loaded and no longer changes
+	tree.Compact()
+
+	owner, err := tree.FindCIDR("10.1.2.3")
+	fmt.Println(owner, err)
+
+	// Output: 2 <nil>
+}

@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	opCount = 5
+	opCount = 6
 
 	fuzz4OpSize = 6
 	fuzz4MaxOps = 64
@@ -125,6 +125,8 @@ func FuzzTree4(f *testing.F) {
 				if a != b {
 					require.Equal(t, b, a, "deleteRange %08x/%d", ip, plen)
 				}
+			case 5:
+				tr.Compact()
 			case 4:
 				av, af := tr.v4.find(ip, mask)
 				bv, bf := want.find(ip, plen)
@@ -258,6 +260,8 @@ func FuzzTree6(f *testing.F) {
 				if a != b {
 					require.Equal(t, b, a, "deleteRange %016x%016x/%d", ip.hi, ip.lo, plen)
 				}
+			case 5:
+				tr.Compact()
 			case 4:
 				av, af := tr.v6.find(ip, mask)
 				bv, bf := want.find(ip, plen)

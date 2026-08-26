@@ -35,6 +35,32 @@ func (t *tree4[T]) newNode() (p *node4[T]) {
 
 // release clears the node so a freed prefix stops keeping its value alive;
 // right doubles as the free-list link.
+func countnode4[T any](n *node4[T]) int {
+	if n == nil {
+		return 0
+	}
+	return 1 + countnode4(n.left) + countnode4(n.right)
+}
+
+// clone copies the subtree depth first, so a node and its descendants land in
+// the arena next to each other.
+func (t *tree4[T]) clone(src *node4[T]) (dst *node4[T]) {
+	if src == nil {
+		return
+	}
+	dst = t.newNode()
+	*dst = *src
+	dst.left = t.clone(src.left)
+	dst.right = t.clone(src.right)
+	return
+}
+
+func (t *tree4[T]) compact() {
+	fresh := &tree4[T]{alloc: make([]node4[T], 0, countnode4(t.root))}
+	fresh.root = fresh.clone(t.root)
+	*t = *fresh
+}
+
 func (t *tree4[T]) release(n *node4[T]) {
 	*n = node4[T]{right: t.free}
 	t.free = n
@@ -100,7 +126,27 @@ func (t *tree4[T]) split(child *node4[T], c uint8, ip uint32, plen uint8, val T)
 	return
 }
 
+// findHost drops the checks that cannot fire when the query is a full /32.
+func (t *tree4[T]) findHost(ip uint32) (val T, found bool) {
+	for n := t.root; n != nil; n = n.getNext(bit4(ip, n.plen)) {
+		if cpl4(n.prefix, ip) < n.plen {
+			return
+		}
+		if n.set {
+			val, found = n.val, true
+		}
+		if n.plen == ipv4MaxMaskLength {
+			return
+		}
+	}
+	return
+}
+
 func (t *tree4[T]) find(ip, mask uint32) (val T, found bool) {
+	if mask == ipv4HostMask {
+		return t.findHost(ip)
+	}
+
 	plen := plenOf4(mask)
 	ip &= mask
 

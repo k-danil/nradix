@@ -120,3 +120,31 @@ func BenchmarkBuild(b *testing.B) {
 		}
 	})
 }
+
+func BenchmarkCompact(b *testing.B) {
+	for _, n := range []int{10_000, 100_000, 1_000_000} {
+		tr, hits, _ := randTable4(n)
+
+		b.Run(fmt.Sprintf("%d/before", n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				tr.Find32(hits[i%len(hits)])
+			}
+		})
+
+		tr.Compact()
+
+		b.Run(fmt.Sprintf("%d/after", n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				tr.Find32(hits[i%len(hits)])
+			}
+		})
+
+		b.Run(fmt.Sprintf("%d/cost", n), func(b *testing.B) {
+			fresh, _, _ := randTable4(n)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				fresh.Compact()
+			}
+		})
+	}
+}

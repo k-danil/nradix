@@ -116,6 +116,18 @@ func (t *Tree[T]) FindCIDR(cidr string) (T, error) {
 	return val, err
 }
 
+// Compact rebuilds the tree in a fresh arena, laying every node next to its
+// descendants. Lookups walk top down, so this speeds them up markedly on large
+// trees; it also reclaims the space left behind by deletions. Worth calling
+// once after a table is loaded, and pointless on a tree that keeps changing.
+func (t *Tree[T]) Compact() {
+	if t.v6 != nil {
+		t.v6.compact()
+		return
+	}
+	t.v4.compact()
+}
+
 // Find32 looks up an IPv4 host address. On an IPv6 tree the address is matched
 // in its IPv4-mapped form, the same way FindCIDR treats a bare IPv4 string.
 func (t *Tree[T]) Find32(ip uint32) (val T, err error) {
