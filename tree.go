@@ -60,7 +60,8 @@ func (t *Tree[T]) setInternal(cidr string, val T, overwrite bool) error {
 		}
 		return t.insert128(ip, mask, val, overwrite)
 	} else {
-		ip, mask, err := parseCIDR4(cidr)
+
+		ip, mask, err := parseCIDR4(StringToBytes(cidr))
 		if err != nil {
 			return err
 		}
@@ -84,7 +85,7 @@ func (t *Tree[T]) deleteInternal(cidr string, wholeRange bool) error {
 		}
 		return t.delete128(ip, mask, wholeRange)
 	} else {
-		ip, mask, err := parseCIDR4(cidr)
+		ip, mask, err := parseCIDR4(StringToBytes(cidr))
 		if err != nil {
 			return err
 		}
@@ -102,7 +103,7 @@ func (t *Tree[T]) FindCIDR(cidr string) (T, error) {
 		}
 		val, found = t.find128(ip, mask)
 	} else {
-		ip, mask, err := parseCIDR4(cidr)
+		ip, mask, err := parseCIDR4(StringToBytes(cidr))
 		if err != nil {
 			return val, err
 		}
