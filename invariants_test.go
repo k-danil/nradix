@@ -95,7 +95,7 @@ func FuzzTree4(f *testing.F) {
 			data = data[:fuzz4OpSize*fuzz4MaxOps]
 		}
 
-		tr := NewTree[int](0, false)
+		tr := NewTree4[int](0)
 		want := model4{}
 
 		for i := 0; i+fuzz4OpSize <= len(data); i += fuzz4OpSize {
@@ -106,37 +106,37 @@ func FuzzTree4(f *testing.F) {
 
 			switch data[i] % opCount {
 			case 0:
-				a, b := tr.insert32(ip, mask, i, false), want.insert(ip, plen, i, false)
+				a, b := tr.v4.insert(ip, mask, i, false), want.insert(ip, plen, i, false)
 				if a != b {
 					require.Equal(t, b, a, "add %08x/%d", ip, plen)
 				}
 			case 1:
-				a, b := tr.insert32(ip, mask, i, true), want.insert(ip, plen, i, true)
+				a, b := tr.v4.insert(ip, mask, i, true), want.insert(ip, plen, i, true)
 				if a != b {
 					require.Equal(t, b, a, "set %08x/%d", ip, plen)
 				}
 			case 2:
-				a, b := tr.delete32(ip, mask, false), want.delete(ip, plen)
+				a, b := tr.v4.delete(ip, mask, false), want.delete(ip, plen)
 				if a != b {
 					require.Equal(t, b, a, "delete %08x/%d", ip, plen)
 				}
 			case 3:
-				a, b := tr.delete32(ip, mask, true), want.deleteRange(ip, plen)
+				a, b := tr.v4.delete(ip, mask, true), want.deleteRange(ip, plen)
 				if a != b {
 					require.Equal(t, b, a, "deleteRange %08x/%d", ip, plen)
 				}
 			case 4:
-				av, af := tr.find32(ip, mask)
+				av, af := tr.v4.find(ip, mask)
 				bv, bf := want.find(ip, plen)
 				if af != bf || (bf && av != bv) {
 					require.Equal(t, []any{bf, bv}, []any{af, av}, "find %08x/%d", ip, plen)
 				}
 			}
 
-			checkNode4(t, tr.root4, nil)
+			checkNode4(t, tr.v4.root, nil)
 
 			for probe := 0; probe <= ipv4MaxMaskLength; probe++ {
-				av, af := tr.find32(ip, mask32Of(probe))
+				av, af := tr.v4.find(ip, mask32Of(probe))
 				bv, bf := want.find(ip, uint8(probe))
 				if af != bf || (bf && av != bv) {
 					require.Equal(t, []any{bf, bv}, []any{af, av}, "probe %08x/%d", ip, probe)
@@ -226,7 +226,7 @@ func FuzzTree6(f *testing.F) {
 			data = data[:fuzz6OpSize*fuzz6MaxOps]
 		}
 
-		tr := NewTree[int](0, true)
+		tr := NewTree6[int](0)
 		want := model6{}
 
 		for i := 0; i+fuzz6OpSize <= len(data); i += fuzz6OpSize {
@@ -239,37 +239,37 @@ func FuzzTree6(f *testing.F) {
 
 			switch data[i] % opCount {
 			case 0:
-				a, b := tr.insert128(ip, mask, i, false), want.insert(ip, plen, i, false)
+				a, b := tr.v6.insert(ip, mask, i, false), want.insert(ip, plen, i, false)
 				if a != b {
 					require.Equal(t, b, a, "add %016x%016x/%d", ip.hi, ip.lo, plen)
 				}
 			case 1:
-				a, b := tr.insert128(ip, mask, i, true), want.insert(ip, plen, i, true)
+				a, b := tr.v6.insert(ip, mask, i, true), want.insert(ip, plen, i, true)
 				if a != b {
 					require.Equal(t, b, a, "set %016x%016x/%d", ip.hi, ip.lo, plen)
 				}
 			case 2:
-				a, b := tr.delete128(ip, mask, false), want.delete(ip, plen)
+				a, b := tr.v6.delete(ip, mask, false), want.delete(ip, plen)
 				if a != b {
 					require.Equal(t, b, a, "delete %016x%016x/%d", ip.hi, ip.lo, plen)
 				}
 			case 3:
-				a, b := tr.delete128(ip, mask, true), want.deleteRange(ip, plen)
+				a, b := tr.v6.delete(ip, mask, true), want.deleteRange(ip, plen)
 				if a != b {
 					require.Equal(t, b, a, "deleteRange %016x%016x/%d", ip.hi, ip.lo, plen)
 				}
 			case 4:
-				av, af := tr.find128(ip, mask)
+				av, af := tr.v6.find(ip, mask)
 				bv, bf := want.find(ip, plen)
 				if af != bf || (bf && av != bv) {
 					require.Equal(t, []any{bf, bv}, []any{af, av}, "find %016x%016x/%d", ip.hi, ip.lo, plen)
 				}
 			}
 
-			checkNode6(t, tr.root6, nil)
+			checkNode6(t, tr.v6.root, nil)
 
 			for probe := 0; probe <= ipv6MaxMaskLength; probe++ {
-				av, af := tr.find128(ip, mask128Of(probe))
+				av, af := tr.v6.find(ip, mask128Of(probe))
 				bv, bf := want.find(ip, uint8(probe))
 				if af != bf || (bf && av != bv) {
 					require.Equal(t, []any{bf, bv}, []any{af, av}, "probe %016x%016x/%d", ip.hi, ip.lo, probe)

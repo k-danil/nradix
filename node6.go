@@ -44,6 +44,8 @@ func (n *node6[T]) onlyChild() *node6[T] {
 	return n.right
 }
 
+var fullMask128 = uint128{^uint64(0), ^uint64(0)}
+
 func mask128(plen uint8) uint128 {
 	if plen <= ipv6HalfMaskLength {
 		return uint128{hi: ^uint64(0) << (ipv6HalfMaskLength - plen)}

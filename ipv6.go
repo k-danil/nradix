@@ -1,10 +1,57 @@
 package nradix
 
-func (t *Tree[T]) insert128(ip, mask uint128, val T, overwrite bool) (err error) {
+type tree6[T any] struct {
+	root  *node6[T]
+	free  *node6[T]
+	alloc []node6[T]
+}
+
+func newTree6[T any](preallocate int) (t *tree6[T]) {
+	t = &tree6[T]{}
+	if preallocate > 0 {
+		t.alloc = make([]node6[T], 0, preallocate)
+	}
+	t.root = t.newNode()
+	return
+}
+
+func (t *tree6[T]) newNode() (p *node6[T]) {
+	if t.free != nil {
+		p = t.free
+		t.free = t.free.right
+		*p = node6[T]{}
+		return
+	}
+
+	ln := len(t.alloc)
+	if ln == cap(t.alloc) {
+		t.alloc = make([]node6[T], 0, ln+allocChunkGrowth)
+		ln = 0
+	}
+	t.alloc = t.alloc[:ln+1]
+
+	return &(t.alloc[ln])
+}
+
+func (t *tree6[T]) release(n *node6[T]) {
+	n.right = t.free
+	t.free = n
+}
+
+func (t *tree6[T]) releaseSubtree(n *node6[T]) {
+	if n == nil {
+		return
+	}
+	t.releaseSubtree(n.left)
+	t.releaseSubtree(n.right)
+	t.release(n)
+}
+
+func (t *tree6[T]) insert(ip, mask uint128, val T, overwrite bool) (err error) {
 	plen := plenOf128(mask)
 	ip = and128(ip, mask)
 
-	n := t.root6
+	n := t.root
 	for {
 		if n.plen == plen {
 			if n.set && !overwrite {
@@ -17,7 +64,7 @@ func (t *Tree[T]) insert128(ip, mask uint128, val T, overwrite bool) (err error)
 		right := bit128(ip, n.plen)
 		child := n.getNext(right)
 		if child == nil {
-			n.setNext(right, t.newLeaf6(ip, plen, val))
+			n.setNext(right, t.newLeaf(ip, plen, val))
 			return
 		}
 
@@ -27,22 +74,22 @@ func (t *Tree[T]) insert128(ip, mask uint128, val T, overwrite bool) (err error)
 			continue
 		}
 
-		n.setNext(right, t.split6(child, c, ip, plen, val))
+		n.setNext(right, t.split(child, c, ip, plen, val))
 		return
 	}
 }
 
-func (t *Tree[T]) newLeaf6(ip uint128, plen uint8, val T) (leaf *node6[T]) {
-	leaf = t.newNode6()
+func (t *tree6[T]) newLeaf(ip uint128, plen uint8, val T) (leaf *node6[T]) {
+	leaf = t.newNode()
 	leaf.prefix, leaf.plen = ip, plen
 	leaf.setValue(val)
 	return
 }
 
-func (t *Tree[T]) split6(child *node6[T], c uint8, ip uint128, plen uint8, val T) (top *node6[T]) {
-	top = t.newLeaf6(ip, plen, val)
+func (t *tree6[T]) split(child *node6[T], c uint8, ip uint128, plen uint8, val T) (top *node6[T]) {
+	top = t.newLeaf(ip, plen, val)
 	if c < plen {
-		fork := t.newNode6()
+		fork := t.newNode()
 		fork.prefix, fork.plen = and128(ip, mask128(c)), c
 		fork.setNext(bit128(ip, c), top)
 		top = fork
@@ -51,11 +98,11 @@ func (t *Tree[T]) split6(child *node6[T], c uint8, ip uint128, plen uint8, val T
 	return
 }
 
-func (t *Tree[T]) find128(ip, mask uint128) (val T, found bool) {
+func (t *tree6[T]) find(ip, mask uint128) (val T, found bool) {
 	plen := plenOf128(mask)
 	ip = and128(ip, mask)
 
-	for n := t.root6; n != nil; n = n.getNext(bit128(ip, n.plen)) {
+	for n := t.root; n != nil; n = n.getNext(bit128(ip, n.plen)) {
 		if n.plen > plen || cpl128(n.prefix, ip) < n.plen {
 			return
 		}
@@ -69,14 +116,14 @@ func (t *Tree[T]) find128(ip, mask uint128) (val T, found bool) {
 	return
 }
 
-func (t *Tree[T]) delete128(ip, mask uint128, wholeRange bool) (err error) {
+func (t *tree6[T]) delete(ip, mask uint128, wholeRange bool) (err error) {
 	plen := plenOf128(mask)
 	ip = and128(ip, mask)
 
 	var parents [ipv6MaxMaskLength + 1]*node6[T]
 	depth := 0
 
-	n := t.root6
+	n := t.root
 	for {
 		if n == nil {
 			return ErrNotFound
@@ -97,15 +144,15 @@ func (t *Tree[T]) delete128(ip, mask uint128, wholeRange bool) (err error) {
 			if !n.set && n.left == nil && n.right == nil {
 				return ErrNotFound
 			}
-			t.releaseSubtree6(n.left)
-			t.releaseSubtree6(n.right)
+			t.releaseSubtree(n.left)
+			t.releaseSubtree(n.right)
 			n.left, n.right = nil, nil
 			n.unsetValue()
 			return
 		}
 		parents[depth-1].setNext(bit128(n.prefix, parents[depth-1].plen), nil)
-		t.releaseSubtree6(n)
-		t.collapse6(parents[:depth])
+		t.releaseSubtree(n)
+		t.collapse(parents[:depth])
 		return
 	}
 
@@ -118,18 +165,18 @@ func (t *Tree[T]) delete128(ip, mask uint128, wholeRange bool) (err error) {
 		return
 	}
 	parents[depth-1].setNext(bit128(n.prefix, parents[depth-1].plen), n.onlyChild())
-	t.release6(n)
-	t.collapse6(parents[:depth])
+	t.release(n)
+	t.collapse(parents[:depth])
 	return
 }
 
-func (t *Tree[T]) collapse6(parents []*node6[T]) {
+func (t *tree6[T]) collapse(parents []*node6[T]) {
 	for i := len(parents) - 1; i > 0; i-- {
 		n := parents[i]
 		if n.set || n.forks() {
 			return
 		}
 		parents[i-1].setNext(bit128(n.prefix, parents[i-1].plen), n.onlyChild())
-		t.release6(n)
+		t.release(n)
 	}
 }

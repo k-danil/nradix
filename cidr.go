@@ -65,6 +65,9 @@ func loadIP4(ipStr []byte) (ip uint32, err error) {
 		if b -= '0'; b > 9 {
 			return 0, ErrBadIP
 		}
+		if digits == 1 && oct == 0 {
+			return 0, ErrBadIP
+		}
 		digits = 1
 		if oct = oct*10 + uint32(b); oct > ipv4OctetMax {
 			return 0, ErrBadIP
@@ -105,29 +108,33 @@ func parseCIDR4(cidr []byte) (ip, mask uint32, err error) {
 }
 
 func parseCIDR6(cidr string) (ip, mask uint128, err error) {
+	var (
+		bare    = isBareIPv4(cidr)
+		maskLen uint32
+		v4      uint32
+	)
 	mask = uint128{^uint64(0), ^uint64(0)}
 
 	if p := strings.LastIndexByte(cidr, '/'); p > 0 {
 		off := uint(p + 1)
 		if off >= uint(len(cidr)) {
-			return uint128{}, uint128{}, ErrBadIP
+			goto ERROR
 		}
-		var maskLen uint32
 		for _, c := range []byte(cidr[p+1:]) {
 			if c -= '0'; c > 9 {
-				return uint128{}, uint128{}, ErrBadIP
+				goto ERROR
 			}
 			if maskLen = maskLen*10 + uint32(c); maskLen > ipv6MaxMaskLength {
-				return uint128{}, uint128{}, ErrBadIP
+				goto ERROR
 			}
 		}
 		cidr = cidr[:p]
 
-		if isBareIPv4(cidr) {
+		if bare {
 			maskLen += ipv6MaxMaskLength - ipv4MaxMaskLength
 		}
 		if maskLen > ipv6MaxMaskLength {
-			return uint128{}, uint128{}, ErrBadIP
+			goto ERROR
 		}
 		if maskLen != ipv6MaxMaskLength {
 			if maskLen <= ipv6HalfMaskLength {
@@ -137,11 +144,19 @@ func parseCIDR6(cidr string) (ip, mask uint128, err error) {
 		}
 	}
 
-	var addr netip.Addr
-	if addr, err = netip.ParseAddr(cidr); err != nil {
-		return uint128{}, uint128{}, ErrBadIP
+	if bare {
+		if v4, err = loadIP4(stringToBytes(cidr)); err != nil {
+			goto ERROR
+		}
+		return ip4To6(v4), mask, nil
 	}
-	ip = addrTo128(addr)
+
+	if ip, err = parseAddr6(stringToBytes(cidr)); err != nil {
+		goto ERROR
+	}
 
 	return
+
+ERROR:
+	return uint128{}, uint128{}, ErrBadIP
 }

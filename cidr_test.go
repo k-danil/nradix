@@ -53,6 +53,11 @@ func TestParseCIDR4(t *testing.T) {
 		{cidr: "1.2.3", wantErr: true},
 		{cidr: "", wantErr: true},
 
+		{cidr: "1.2.3.010", wantErr: true},
+		{cidr: "01.2.3.4", wantErr: true},
+		{cidr: "1.2.3.00", wantErr: true},
+		{cidr: "0.0.0.0", wantIP: 0, wantLen: ipv4MaxMaskLength},
+
 		{cidr: "1.2.3.256", wantErr: true},
 		{cidr: "1.2.3.4294967296", wantErr: true}, // 2^32: wraps to 0
 	}
@@ -116,15 +121,6 @@ func TestParseCIDR6(t *testing.T) {
 	}
 }
 
-func hasLeadingZero(addr string) bool {
-	for _, octet := range strings.Split(addr, ".") {
-		if len(octet) > 1 && octet[0] == '0' {
-			return true
-		}
-	}
-	return false
-}
-
 func splitMask(cidr string) (addr string) {
 	if p := strings.LastIndexByte(cidr, '/'); p > 0 {
 		return cidr[:p]
@@ -149,10 +145,6 @@ func FuzzParseCIDR4(f *testing.F) {
 
 		addr := splitMask(cidr)
 		a, aerr := netip.ParseAddr(addr)
-		// netip rejects leading zeros in octets, loadIP4 accepts them
-		if hasLeadingZero(addr) {
-			return
-		}
 		require.NoError(t, aerr, "accepted %q, netip rejects it", addr)
 		require.True(t, a.Is4(), "accepted non-IPv4 %q", addr)
 

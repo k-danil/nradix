@@ -11,15 +11,8 @@ import (
 
 // Tree implements radix tree for working with IP/mask. Thread safety is not guaranteed, you should choose your own style of protecting safety of operations.
 type Tree[T any] struct {
-	root4  *node4[T]
-	free4  *node4[T]
-	alloc4 []node4[T]
-
-	root6  *node6[T]
-	free6  *node6[T]
-	alloc6 []node6[T]
-
-	ipv6 bool
+	v4 *tree4[T]
+	v6 *tree6[T]
 }
 
 const (
@@ -39,23 +32,15 @@ var (
 	ErrBadIP    = errors.New("bad IP address or mask")
 )
 
-// NewTree creates Tree.
-func NewTree[T any](preallocate uint64, ipv6 bool) (t *Tree[T]) {
-	t = &Tree[T]{
-		ipv6: ipv6,
-	}
-	if ipv6 {
-		if preallocate > 0 {
-			t.alloc6 = make([]node6[T], 0, preallocate)
-		}
-		t.root6 = t.newNode6()
-		return
-	}
-	if preallocate > 0 {
-		t.alloc4 = make([]node4[T], 0, preallocate)
-	}
-	t.root4 = t.newNode4()
-	return
+// NewTree4 creates a tree for IPv4 prefixes, reserving room for preallocate nodes.
+func NewTree4[T any](preallocate int) (t *Tree[T]) {
+	return &Tree[T]{v4: newTree4[T](preallocate)}
+}
+
+// NewTree6 creates a tree for IPv6 prefixes, reserving room for preallocate nodes.
+// Bare IPv4 prefixes are accepted too and stored in their IPv4-mapped form.
+func NewTree6[T any](preallocate int) (t *Tree[T]) {
+	return &Tree[T]{v6: newTree6[T](preallocate)}
 }
 
 func (t *Tree[T]) AddCIDR(cidr string, val T) error {
@@ -67,19 +52,19 @@ func (t *Tree[T]) SetCIDR(cidr string, val T) error {
 }
 
 func (t *Tree[T]) setInternal(cidr string, val T, overwrite bool) error {
-	if t.ipv6 {
+	if t.v6 != nil {
 		ip, mask, err := parseCIDR6(cidr)
 		if err != nil {
 			return err
 		}
-		return t.insert128(ip, mask, val, overwrite)
+		return t.v6.insert(ip, mask, val, overwrite)
 	}
 
 	ip, mask, err := parseCIDR4(stringToBytes(cidr))
 	if err != nil {
 		return err
 	}
-	return t.insert32(ip, mask, val, overwrite)
+	return t.v4.insert(ip, mask, val, overwrite)
 }
 
 func (t *Tree[T]) DeleteWholeRangeCIDR(cidr string) error {
@@ -91,36 +76,36 @@ func (t *Tree[T]) DeleteCIDR(cidr string) error {
 }
 
 func (t *Tree[T]) deleteInternal(cidr string, wholeRange bool) error {
-	if t.ipv6 {
+	if t.v6 != nil {
 		ip, mask, err := parseCIDR6(cidr)
 		if err != nil {
 			return err
 		}
-		return t.delete128(ip, mask, wholeRange)
+		return t.v6.delete(ip, mask, wholeRange)
 	}
 
 	ip, mask, err := parseCIDR4(stringToBytes(cidr))
 	if err != nil {
 		return err
 	}
-	return t.delete32(ip, mask, wholeRange)
+	return t.v4.delete(ip, mask, wholeRange)
 }
 
 func (t *Tree[T]) FindCIDR(cidr string) (T, error) {
 	var found bool
 	var val T
-	if t.ipv6 {
+	if t.v6 != nil {
 		ip, mask, err := parseCIDR6(cidr)
 		if err != nil {
 			return val, err
 		}
-		val, found = t.find128(ip, mask)
+		val, found = t.v6.find(ip, mask)
 	} else {
 		ip, mask, err := parseCIDR4(stringToBytes(cidr))
 		if err != nil {
 			return val, err
 		}
-		val, found = t.find32(ip, mask)
+		val, found = t.v4.find(ip, mask)
 	}
 
 	var err error
@@ -135,10 +120,10 @@ func (t *Tree[T]) FindCIDR(cidr string) (T, error) {
 // in its IPv4-mapped form, the same way FindCIDR treats a bare IPv4 string.
 func (t *Tree[T]) Find32(ip uint32) (val T, err error) {
 	var found bool
-	if t.ipv6 {
-		val, found = t.find128(ip4To6(ip), mask128(ipv6MaxMaskLength))
+	if t.v6 != nil {
+		val, found = t.v6.find(ip4To6(ip), fullMask128)
 	} else {
-		val, found = t.find32(ip, ipv4HostMask)
+		val, found = t.v4.find(ip, ipv4HostMask)
 	}
 
 	if !found {
@@ -156,83 +141,19 @@ func (t *Tree[T]) FindAddr(addr netip.Addr) (val T, err error) {
 	}
 
 	var found bool
-	if t.ipv6 {
-		val, found = t.find128(addrTo128(addr), mask128(ipv6MaxMaskLength))
+	if t.v6 != nil {
+		val, found = t.v6.find(addrTo128(addr), fullMask128)
 	} else {
 		ip, ok := addrTo32(addr)
 		if !ok {
 			err = ErrBadIP
 			return
 		}
-		val, found = t.find32(ip, ipv4HostMask)
+		val, found = t.v4.find(ip, ipv4HostMask)
 	}
 
 	if !found {
 		err = ErrNotFound
 	}
 	return
-}
-
-func (t *Tree[T]) newNode6() (p *node6[T]) {
-	if t.free6 != nil {
-		p = t.free6
-		t.free6 = t.free6.right
-		*p = node6[T]{}
-		return
-	}
-
-	ln := len(t.alloc6)
-	if ln == cap(t.alloc6) {
-		t.alloc6 = make([]node6[T], 0, ln+allocChunkGrowth)
-		ln = 0
-	}
-	t.alloc6 = t.alloc6[:ln+1]
-
-	return &(t.alloc6[ln])
-}
-
-func (t *Tree[T]) release6(n *node6[T]) {
-	n.right = t.free6
-	t.free6 = n
-}
-
-func (t *Tree[T]) releaseSubtree6(n *node6[T]) {
-	if n == nil {
-		return
-	}
-	t.releaseSubtree6(n.left)
-	t.releaseSubtree6(n.right)
-	t.release6(n)
-}
-
-func (t *Tree[T]) newNode4() (p *node4[T]) {
-	if t.free4 != nil {
-		p = t.free4
-		t.free4 = t.free4.right
-		*p = node4[T]{}
-		return
-	}
-
-	ln := len(t.alloc4)
-	if ln == cap(t.alloc4) {
-		t.alloc4 = make([]node4[T], 0, ln+allocChunkGrowth)
-		ln = 0
-	}
-	t.alloc4 = t.alloc4[:ln+1]
-
-	return &(t.alloc4[ln])
-}
-
-func (t *Tree[T]) release4(n *node4[T]) {
-	n.right = t.free4
-	t.free4 = n
-}
-
-func (t *Tree[T]) releaseSubtree4(n *node4[T]) {
-	if n == nil {
-		return
-	}
-	t.releaseSubtree4(n.left)
-	t.releaseSubtree4(n.right)
-	t.release4(n)
 }

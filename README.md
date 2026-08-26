@@ -4,7 +4,7 @@ Radix tree for IPv4 and IPv6 CIDR lookup: store a value per prefix, then find
 the longest prefix matching a given address.
 
 ```go
-tree := nradix.NewTree[string](0, false)
+tree := nradix.NewTree4[string](0)
 
 tree.AddCIDR("10.0.0.0/8", "corp")
 tree.AddCIDR("10.1.2.0/24", "office")
@@ -25,10 +25,13 @@ Requires Go 1.26 or newer. No runtime dependencies.
 
 ## API
 
-A tree is created for one address family and holds values of any type `T`:
+A tree is created for one address family and holds values of any type `T`.
+`preallocate` reserves room for that many nodes up front; pass `0` to let the
+tree grow on its own.
 
 ```go
-func NewTree[T any](preallocate uint64, ipv6 bool) *Tree[T]
+func NewTree4[T any](preallocate int) *Tree[T]
+func NewTree6[T any](preallocate int) *Tree[T]
 ```
 
 | method | |
@@ -43,6 +46,10 @@ func NewTree[T any](preallocate uint64, ipv6 bool) *Tree[T]
 
 `Find32` and `FindAddr` skip string parsing entirely, which is worth a lot —
 see below. Both take a host address, so they match `/32` and `/128` lookups.
+
+Prefixes are parsed strictly: leading zeros in an IPv4 octet are rejected, so
+`1.2.3.010` is an error rather than `1.2.3.10` — the two readings of that string
+are exactly what ACL bypasses are built on.
 
 An IPv4 tree accepts IPv4 and IPv4-mapped addresses and reports `ErrBadIP` for
 anything else. An IPv6 tree accepts bare IPv4 too, matching it in its
@@ -59,11 +66,25 @@ library deliberately makes no choice for you.
 
 Apple M1 Pro, Go 1.27, single lookup:
 
+Single lookup against a handful of prefixes:
+
 | | IPv4 | IPv6 |
 |---|---|---|
-| `FindCIDR` (parses the string) | 20 ns | 54 ns |
-| `FindAddr` | 6.5 ns | 6.9 ns |
+| `FindCIDR` (parses the string) | 22 ns | 39 ns |
+| `FindAddr` | 6.3 ns | 7.6 ns |
 | `Find32` | 4.8 ns | — |
+
+Against realistic tables of random prefixes, where cache misses dominate:
+
+| prefixes | IPv4 | IPv6 |
+|---|---|---|
+| 1 000 | 46 ns | 55 ns |
+| 10 000 | 93 ns | 93 ns |
+| 100 000 | 125 ns | 161 ns |
+
+Lookups never allocate. CIDR strings are parsed by a hand-rolled parser rather
+than `net/netip`, which is where the gap between `FindCIDR` and `FindAddr`
+comes from — pass a `netip.Addr` or a `uint32` when you already have one.
 
 The tree is path-compressed, so a chain of single-child nodes collapses into one
 edge and lookup cost follows the number of distinct branch points rather than
@@ -80,9 +101,9 @@ Forked from [asergeyev/nradix](https://github.com/asergeyev/nradix), originally
 a Go translation of nginx's radix tree.
 
 Little of the original code remains: the tree is generic over the value type,
-IPv6 is supported, paths are compressed, the CIDR parser was rewritten, and
-lookups can bypass parsing. The public API kept its shape, and the MIT license
-and copyright of the original author are retained.
+IPv6 is supported, paths are compressed, the CIDR parser was rewritten from
+scratch, and lookups can bypass parsing entirely. The public API kept its
+shape, and the MIT license and copyright of the original author are retained.
 
 ## License
 
