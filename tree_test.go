@@ -5,8 +5,12 @@
 package nradix
 
 import (
+	"fmt"
 	"net/netip"
+	"runtime"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -204,6 +208,27 @@ func TestFindWithoutParsing(t *testing.T) {
 		_, err := tr4.FindAddr(addr)
 		assert.ErrorIs(t, err, ErrBadIP, addr.String())
 	}
+}
+
+func TestDeleteReleasesValues(t *testing.T) {
+	const n = 500
+	var freed atomic.Int64
+
+	tr := NewTree4[*int](0)
+	for i := range n {
+		v := new(int)
+		runtime.AddCleanup(v, func(c *atomic.Int64) { c.Add(1) }, &freed)
+		require.NoError(t, tr.AddCIDR(fmt.Sprintf("10.%d.%d.0/24", i/256, i%256), v))
+	}
+	require.NoError(t, tr.DeleteWholeRangeCIDR("10.0.0.0/8"))
+
+	for range 3 {
+		runtime.GC()
+		time.Sleep(10 * time.Millisecond)
+	}
+	// a freed node must not keep its value alive until it is reused
+	assert.Greater(t, freed.Load(), int64(n-10))
+	runtime.KeepAlive(tr)
 }
 
 func BenchmarkTree_FindWithoutParsing(b *testing.B) {

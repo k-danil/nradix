@@ -18,8 +18,8 @@ func newTree6[T any](preallocate int) (t *tree6[T]) {
 func (t *tree6[T]) newNode() (p *node6[T]) {
 	if t.free != nil {
 		p = t.free
-		t.free = t.free.right
-		*p = node6[T]{}
+		t.free = p.right
+		p.right = nil
 		return
 	}
 
@@ -33,8 +33,10 @@ func (t *tree6[T]) newNode() (p *node6[T]) {
 	return &(t.alloc[ln])
 }
 
+// release clears the node so a freed prefix stops keeping its value alive;
+// right doubles as the free-list link.
 func (t *tree6[T]) release(n *node6[T]) {
-	n.right = t.free
+	*n = node6[T]{right: t.free}
 	t.free = n
 }
 

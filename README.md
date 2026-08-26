@@ -93,7 +93,14 @@ regardless of mask lengths: 10 000 IPv6 prefixes occupy 19 999 nodes and under
 1 MB.
 
 Nodes come from an internal arena and deleted ones are recycled, so a steady
-workload does not allocate.
+workload does not allocate. A deleted prefix drops its value immediately rather
+than holding it until the node is reused.
+
+Note that the tree stays visible to the garbage collector: nodes contain
+pointers, so every mark cycle walks them. On a 100 000-prefix tree that costs
+roughly 0.6 ms per cycle, and about twice that if `T` itself contains pointers.
+If GC pressure matters to you, store something pointer-free — an index into
+your own slice rather than the pointer itself.
 
 ## Origin
 
