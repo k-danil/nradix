@@ -127,19 +127,25 @@ func (t *tree4[T]) split(child *node4[T], c uint8, ip uint32, plen uint8, val T)
 }
 
 // findHost drops the checks that cannot fire when the query is a full /32.
+// plen rides along from the parent's cplen mirror, so each level costs a single
+// dependent load; a /32 node cannot have children, so no depth check is needed.
 func (t *tree4[T]) findHost(ip uint32) (val T, found bool) {
-	for n := t.root; n != nil; n = n.getNext(bit4(ip, n.plen)) {
-		if cpl4(n.prefix, ip) < n.plen {
+	n := t.root
+	for plen := uint8(0); ; {
+		if cpl4(n.prefix, ip) < plen {
 			return
 		}
 		if n.set {
 			val, found = n.val, true
 		}
-		if n.plen == ipv4MaxMaskLength {
+		right := bit4(ip, plen)
+		next := n.getNext(right)
+		if next == nil {
 			return
 		}
+		plen = n.nextPlen(right)
+		n = next
 	}
-	return
 }
 
 func (t *tree4[T]) find(ip, mask uint32) (val T, found bool) {
@@ -147,21 +153,28 @@ func (t *tree4[T]) find(ip, mask uint32) (val T, found bool) {
 		return t.findHost(ip)
 	}
 
-	plen := plenOf4(mask)
+	qlen := plenOf4(mask)
 	ip &= mask
 
-	for n := t.root; n != nil; n = n.getNext(bit4(ip, n.plen)) {
-		if n.plen > plen || cpl4(n.prefix, ip) < n.plen {
+	n := t.root
+	for plen := uint8(0); ; {
+		if plen > qlen || cpl4(n.prefix, ip) < plen {
 			return
 		}
 		if n.set {
 			val, found = n.val, true
 		}
-		if n.plen == plen {
+		if plen == qlen {
 			return
 		}
+		right := bit4(ip, plen)
+		next := n.getNext(right)
+		if next == nil {
+			return
+		}
+		plen = n.nextPlen(right)
+		n = next
 	}
-	return
 }
 
 func (t *tree4[T]) delete(ip, mask uint32, wholeRange bool) (err error) {

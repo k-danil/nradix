@@ -1,5 +1,7 @@
 package nradix
 
+import "math/bits"
+
 type tree6[T any] struct {
 	root  *node6[T]
 	free  *node6[T]
@@ -127,19 +129,42 @@ func (t *tree6[T]) split(child *node6[T], c uint8, ip uint128, plen uint8, val T
 }
 
 // findHost drops the checks that cannot fire when the query is a full /128.
+// plen rides along from the parent's cplen mirror, so each level costs a single
+// dependent load. At plen 128 the masked shift picks a garbage direction, which
+// is safe: a /128 node cannot have children.
 func (t *tree6[T]) findHost(ip uint128) (val T, found bool) {
-	for n := t.root; n != nil; n = n.getNext(bit128(ip, n.plen)) {
-		if cpl128(n.prefix, ip) < n.plen {
+	n := t.root
+	plen := uint8(0)
+	for plen < ipv6HalfMaskLength {
+		if bits.LeadingZeros64(n.prefix.hi^ip.hi) < int(plen) {
 			return
 		}
 		if n.set {
 			val, found = n.val, true
 		}
-		if n.plen == ipv6MaxMaskLength {
+		right := ip.hi&(uint128StartBit>>(plen&(ipv6HalfMaskLength-1))) != 0
+		next := n.getNext(right)
+		if next == nil {
 			return
 		}
+		plen = n.nextPlen(right)
+		n = next
 	}
-	return
+	for {
+		if n.prefix.hi != ip.hi || bits.LeadingZeros64(n.prefix.lo^ip.lo) < int(plen-ipv6HalfMaskLength) {
+			return
+		}
+		if n.set {
+			val, found = n.val, true
+		}
+		right := ip.lo&(uint128StartBit>>((plen-ipv6HalfMaskLength)&(ipv6HalfMaskLength-1))) != 0
+		next := n.getNext(right)
+		if next == nil {
+			return
+		}
+		plen = n.nextPlen(right)
+		n = next
+	}
 }
 
 func (t *tree6[T]) find(ip, mask uint128) (val T, found bool) {
@@ -147,21 +172,48 @@ func (t *tree6[T]) find(ip, mask uint128) (val T, found bool) {
 		return t.findHost(ip)
 	}
 
-	plen := plenOf128(mask)
+	qlen := plenOf128(mask)
 	ip = and128(ip, mask)
 
-	for n := t.root; n != nil; n = n.getNext(bit128(ip, n.plen)) {
-		if n.plen > plen || cpl128(n.prefix, ip) < n.plen {
+	n := t.root
+	plen := uint8(0)
+	for plen < ipv6HalfMaskLength {
+		if plen > qlen || bits.LeadingZeros64(n.prefix.hi^ip.hi) < int(plen) {
 			return
 		}
 		if n.set {
 			val, found = n.val, true
 		}
-		if n.plen == plen {
+		if plen == qlen {
 			return
 		}
+		right := ip.hi&(uint128StartBit>>(plen&(ipv6HalfMaskLength-1))) != 0
+		next := n.getNext(right)
+		if next == nil {
+			return
+		}
+		plen = n.nextPlen(right)
+		n = next
 	}
-	return
+	for {
+		if plen > qlen || n.prefix.hi != ip.hi ||
+			bits.LeadingZeros64(n.prefix.lo^ip.lo) < int(plen-ipv6HalfMaskLength) {
+			return
+		}
+		if n.set {
+			val, found = n.val, true
+		}
+		if plen == qlen {
+			return
+		}
+		right := ip.lo&(uint128StartBit>>((plen-ipv6HalfMaskLength)&(ipv6HalfMaskLength-1))) != 0
+		next := n.getNext(right)
+		if next == nil {
+			return
+		}
+		plen = n.nextPlen(right)
+		n = next
+	}
 }
 
 func (t *tree6[T]) delete(ip, mask uint128, wholeRange bool) (err error) {

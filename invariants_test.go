@@ -78,6 +78,7 @@ func checkNode4[T any](t *testing.T, n, parent *node4[T]) {
 		require.Greater(t, n.plen, parent.plen, "plen must grow downwards")
 		require.GreaterOrEqual(t, cpl4(n.prefix, parent.prefix), parent.plen, "child must extend parent prefix")
 		require.Equal(t, n == parent.right, bit4(n.prefix, parent.plen), "child hangs on the wrong side")
+		require.Equal(t, n.plen, parent.nextPlen(n == parent.right), "cplen mirror is stale")
 		require.True(t, n.set || n.forks(), "valueless node must fork, otherwise it should have collapsed")
 	}
 	checkNode4(t, n.left, n)
@@ -211,6 +212,7 @@ func checkNode6[T any](t *testing.T, n, parent *node6[T]) {
 		require.Greater(t, n.plen, parent.plen, "plen must grow downwards")
 		require.GreaterOrEqual(t, cpl128(n.prefix, parent.prefix), parent.plen, "child must extend parent prefix")
 		require.Equal(t, n == parent.right, bit128(n.prefix, parent.plen), "child hangs on the wrong side")
+		require.Equal(t, n.plen, parent.nextPlen(n == parent.right), "cplen mirror is stale")
 		require.True(t, n.set || n.forks(), "valueless node must fork, otherwise it should have collapsed")
 	}
 	checkNode6(t, n.left, n)

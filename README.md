@@ -71,17 +71,17 @@ Single lookup against a handful of prefixes:
 
 | | IPv4 | IPv6 |
 |---|---|---|
-| `FindCIDR` (parses the string) | 22 ns | 39 ns |
-| `FindAddr` | 6.3 ns | 7.6 ns |
-| `Find32` | 4.8 ns | — |
+| `FindCIDR` (parses the string) | 22 ns | 36 ns |
+| `FindAddr` | 6.0 ns | 6.2 ns |
+| `Find32` | 4.4 ns | — |
 
 Against realistic tables of random prefixes, where cache misses dominate:
 
 | prefixes | IPv4 | IPv6 |
 |---|---|---|
-| 1 000 | 46 ns | 55 ns |
-| 10 000 | 93 ns | 93 ns |
-| 100 000 | 125 ns | 161 ns |
+| 1 000 | 39 ns | 40 ns |
+| 10 000 | 72 ns | 62 ns |
+| 100 000 | 102 ns | 115 ns |
 
 Lookups never allocate. CIDR strings are parsed by a hand-rolled parser rather
 than `net/netip`, which is where the gap between `FindCIDR` and `FindAddr`

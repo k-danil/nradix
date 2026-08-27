@@ -10,15 +10,26 @@ type node4[T any] struct {
 	prefix      uint32
 	plen        uint8
 	set         bool
-	val         T
+	// cplen mirrors {left,right}.plen: find reads the child's bit index from the
+	// current cache line instead of waiting for the child's. A linked node's plen
+	// never changes, so setNext keeps the mirror exact.
+	cplen [2]uint8
+	val   T
 }
 
 func (n *node4[T]) getNext(right bool) *node4[T] {
 	return *(**node4[T])(unsafe.Add(unsafe.Pointer(n), b2u(right)*sizeOfUintPtr))
 }
 
+func (n *node4[T]) nextPlen(right bool) uint8 {
+	return n.cplen[b2u(right)]
+}
+
 func (n *node4[T]) setNext(right bool, nn *node4[T]) *node4[T] {
 	*(**node4[T])(unsafe.Add(unsafe.Pointer(n), b2u(right)*sizeOfUintPtr)) = nn
+	if nn != nil {
+		n.cplen[b2u(right)] = nn.plen
+	}
 	return nn
 }
 
