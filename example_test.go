@@ -9,7 +9,7 @@ import (
 )
 
 func ExampleTree() {
-	tree := nradix.NewTree4[string](0)
+	tree := nradix.NewTree[string](0)
 
 	tree.AddCIDR("10.0.0.0/8", "corp")
 	tree.AddCIDR("10.1.2.0/24", "office")
@@ -32,7 +32,7 @@ func ExampleTree() {
 }
 
 func ExampleTree_FindAddr() {
-	tree := nradix.NewTree6[int](0)
+	tree := nradix.NewTree[int](0)
 	tree.AddCIDR("2001:db8::/32", 1)
 
 	// no string parsing on lookup
@@ -43,7 +43,7 @@ func ExampleTree_FindAddr() {
 }
 
 func ExampleTree_Find32() {
-	tree := nradix.NewTree4[int](0)
+	tree := nradix.NewTree[int](0)
 	tree.AddCIDR("192.0.2.0/24", 42)
 
 	owner, err := tree.Find32(0xC0000201) // 192.0.2.1
@@ -53,7 +53,7 @@ func ExampleTree_Find32() {
 }
 
 func ExampleTree_Compact() {
-	tree := nradix.NewTree4[int](0)
+	tree := nradix.NewTree[int](0)
 	for i, cidr := range []string{"10.0.0.0/8", "10.1.0.0/16", "10.1.2.0/24"} {
 		tree.AddCIDR(cidr, i)
 	}

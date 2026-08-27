@@ -76,7 +76,7 @@ func runSteps(t *testing.T, tr *Tree[int], steps []step) {
 }
 
 func TestTree(t *testing.T) {
-	tr := NewTree4[int](0)
+	tr := NewTree[int](0)
 
 	stages := []struct {
 		name  string
@@ -125,7 +125,7 @@ func TestTree(t *testing.T) {
 }
 
 func TestSet(t *testing.T) {
-	runSteps(t, NewTree4[int](0), []step{
+	runSteps(t, NewTree[int](0), []step{
 		{op: opAdd, cidr: "1.1.1.0/24", val: 1},
 		{op: opFind, cidr: "1.1.1.0", val: 1},
 		{op: opAdd, cidr: "1.1.1.0/25", val: 2},
@@ -142,7 +142,7 @@ func TestSet(t *testing.T) {
 }
 
 func TestRegression(t *testing.T) {
-	runSteps(t, NewTree4[int](0), []step{
+	runSteps(t, NewTree[int](0), []step{
 		{op: opAdd, cidr: "1.1.1.0/24", val: 1},
 		{op: opDelete, cidr: "1.1.1.0/24"},
 		{op: opAdd, cidr: "1.1.1.0/25", val: 2},
@@ -151,7 +151,7 @@ func TestRegression(t *testing.T) {
 }
 
 func TestTree6(t *testing.T) {
-	runSteps(t, NewTree6[int](0), []step{
+	runSteps(t, NewTree[int](0), []step{
 		{op: opAdd, cidr: "dead::0/16", val: 3},
 		{op: opFind, cidr: "dead::beef", val: 3},
 		{op: opFind, cidr: "deed::beef/32", err: ErrNotFound},
@@ -163,7 +163,7 @@ func TestTree6(t *testing.T) {
 
 func TestRegression6(t *testing.T) {
 	// in one of the implementations /128 addresses were causing panic
-	runSteps(t, NewTree6[int](0), []step{
+	runSteps(t, NewTree[int](0), []step{
 		{op: opAdd, cidr: "2620:10f::/32", val: 54321},
 		{op: opAdd, cidr: "2620:10f:d000:100::5/128", val: 12345},
 		{op: opFind, cidr: "2620:10f:d000:100::5/128", val: 12345},
@@ -172,9 +172,9 @@ func TestRegression6(t *testing.T) {
 
 func newTestTree(ipv6 bool) *Tree[int] {
 	if ipv6 {
-		return NewTree6[int](0)
+		return NewTree[int](0)
 	}
-	return NewTree4[int](0)
+	return NewTree[int](0)
 }
 
 func TestFindWithoutParsing(t *testing.T) {
@@ -184,8 +184,8 @@ func TestFindWithoutParsing(t *testing.T) {
 	)
 
 	for _, ipv6 := range []bool{false, true} {
-		t.Run(map[bool]string{false: "tree4", true: "tree6"}[ipv6], func(t *testing.T) {
-			tr := newTestTree(ipv6)
+		t.Run(map[bool]string{false: "bare", true: "mapped"}[ipv6], func(t *testing.T) {
+			tr := NewTree[int](0)
 			require.NoError(t, tr.AddCIDR("1.2.3.0/24", 7))
 
 			got, err := tr.Find32(inRange)
@@ -203,18 +203,23 @@ func TestFindWithoutParsing(t *testing.T) {
 		})
 	}
 
-	tr4 := NewTree4[int](0)
-	for _, addr := range []netip.Addr{netip.MustParseAddr("dead::beef"), {}} {
-		_, err := tr4.FindAddr(addr)
-		assert.ErrorIs(t, err, ErrBadIP, addr.String())
-	}
+	// one tree holds both families, so only an invalid address is rejected
+	tr := NewTree[int](0)
+	require.NoError(t, tr.AddCIDR("dead::/16", 9))
+
+	got, err := tr.FindAddr(netip.MustParseAddr("dead::beef"))
+	require.NoError(t, err)
+	assert.Equal(t, 9, got)
+
+	_, err = tr.FindAddr(netip.Addr{})
+	assert.ErrorIs(t, err, ErrBadIP)
 }
 
 func TestDeleteReleasesValues(t *testing.T) {
 	const n = 500
 	var freed atomic.Int64
 
-	tr := NewTree4[*int](0)
+	tr := NewTree[*int](0)
 	for i := range n {
 		v := new(int)
 		runtime.AddCleanup(v, func(c *atomic.Int64) { c.Add(1) }, &freed)
@@ -232,9 +237,9 @@ func TestDeleteReleasesValues(t *testing.T) {
 }
 
 func BenchmarkTree_FindWithoutParsing(b *testing.B) {
-	tr4 := NewTree4[int](0)
+	tr4 := NewTree[int](0)
 	tr4.AddCIDR("1.1.1.0/24", 1)
-	tr6 := NewTree6[int](0)
+	tr6 := NewTree[int](0)
 	tr6.AddCIDR("2620:10f::/32", 1)
 
 	addr4 := netip.MustParseAddr("1.1.1.128")
@@ -268,7 +273,7 @@ func BenchmarkTree_FindWithoutParsing(b *testing.B) {
 }
 
 func BenchmarkTree_FindCIDR_ipv6(b *testing.B) {
-	tr := NewTree6[int](0)
+	tr := NewTree[int](0)
 	tr.AddCIDR("2620:10f::/32", 1)
 	tr.AddCIDR("2620:10f:d000:100::5", 2)
 
@@ -287,7 +292,7 @@ func BenchmarkTree_FindCIDR_ipv6(b *testing.B) {
 }
 
 func BenchmarkTree_FindCIDR_ipv4(b *testing.B) {
-	tr := NewTree4[struct{}](200)
+	tr := NewTree[struct{}](200)
 	tr.AddCIDR("1.1.1.0/24", struct{}{})
 	tr.AddCIDR("1.1.1.0/25", struct{}{})
 	tr.AddCIDR("1.1.1.128", struct{}{})

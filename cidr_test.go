@@ -10,13 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func mask32Of(prefixLen int) (mask uint32) {
-	for i := range prefixLen {
-		mask |= uint32StartBit >> i
-	}
-	return
-}
-
 func mask128Of(prefixLen int) (mask uint128) {
 	for i := range prefixLen {
 		if i < ipv6HalfMaskLength {
@@ -28,7 +21,7 @@ func mask128Of(prefixLen int) (mask uint128) {
 	return
 }
 
-func TestParseCIDR4(t *testing.T) {
+func TestParseBareIPv4(t *testing.T) {
 	tests := []struct {
 		cidr    string
 		wantIP  uint32
@@ -37,7 +30,7 @@ func TestParseCIDR4(t *testing.T) {
 	}{
 		{cidr: "1.2.3.4", wantIP: 0x01020304, wantLen: ipv4MaxMaskLength},
 		{cidr: "1.2.3.4/24", wantIP: 0x01020304, wantLen: 24},
-		{cidr: "1.2.3.4/032", wantIP: 0x01020304, wantLen: 32},
+		{cidr: "1.2.3.4/032", wantErr: true}, // netip rejects a padded mask too
 		{cidr: "0.0.0.0/0", wantLen: 0},
 		{cidr: "255.255.255.255/32", wantIP: 0xffffffff, wantLen: 32},
 
@@ -64,14 +57,14 @@ func TestParseCIDR4(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.cidr, func(t *testing.T) {
-			ip, mask, err := parseCIDR4(stringToBytes(tt.cidr))
+			ip, mask, err := parseCIDR6(stringToBytes(tt.cidr))
 			if tt.wantErr {
 				require.ErrorIs(t, err, ErrBadIP)
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantIP, ip)
-			assert.Equal(t, mask32Of(tt.wantLen), mask)
+			assert.Equal(t, ip4To6(tt.wantIP), ip)
+			assert.Equal(t, mask128Of(tt.wantLen+ipv6MaxMaskLength-ipv4MaxMaskLength), mask)
 		})
 	}
 }
@@ -101,6 +94,8 @@ func TestParseCIDR6(t *testing.T) {
 		{cidr: "64:ff9b::1.2.3.4/96", wantHi: 0x0064ff9b00000000, wantLo: 0x01020304, wantLen: 96},
 
 		{cidr: "dead::/129", wantErr: true},
+		{cidr: "dead::/016", wantErr: true},
+		{cidr: "dead::/0", wantHi: 0xdead000000000000, wantLen: 0},
 		{cidr: "dead::/4294967424", wantErr: true}, // 2^32+128: wraps to a valid length
 		{cidr: "1.2.3.4/33", wantErr: true},
 		{cidr: "dead::/", wantErr: true},
@@ -109,7 +104,7 @@ func TestParseCIDR6(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.cidr, func(t *testing.T) {
-			ip, mask, err := parseCIDR6(tt.cidr)
+			ip, mask, err := parseCIDR6(stringToBytes(tt.cidr))
 			if tt.wantErr {
 				require.ErrorIs(t, err, ErrBadIP)
 				return
@@ -121,37 +116,12 @@ func TestParseCIDR6(t *testing.T) {
 	}
 }
 
+// mirrors what the parser considers a mask separator
 func splitMask(cidr string) (addr string) {
-	if p := strings.LastIndexByte(cidr, '/'); p > 0 {
+	if p := maskSep(stringToBytes(cidr)); p > 0 {
 		return cidr[:p]
 	}
 	return cidr
-}
-
-func FuzzParseCIDR4(f *testing.F) {
-	for _, s := range []string{
-		"1.2.3.4", "1.2.3.4/24", "0.0.0.0/0", "255.255.255.255/32",
-		"1..3.4", "1.2.3.4/4294967328", "1.2.3.4294967296",
-	} {
-		f.Add(s)
-	}
-
-	f.Fuzz(func(t *testing.T, cidr string) {
-		ip, mask, err := parseCIDR4(stringToBytes(cidr))
-		if err != nil {
-			return
-		}
-		require.Equal(t, mask32Of(bits.OnesCount32(mask)), mask, "non-contiguous mask for %q", cidr)
-
-		addr := splitMask(cidr)
-		a, aerr := netip.ParseAddr(addr)
-		require.NoError(t, aerr, "accepted %q, netip rejects it", addr)
-		require.True(t, a.Is4(), "accepted non-IPv4 %q", addr)
-
-		b := a.As4()
-		want := uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
-		require.Equal(t, want, ip, "ip mismatch for %q", addr)
-	})
 }
 
 func FuzzParseCIDR6(f *testing.F) {
@@ -163,7 +133,7 @@ func FuzzParseCIDR6(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, cidr string) {
-		_, mask, err := parseCIDR6(cidr)
+		_, mask, err := parseCIDR6(stringToBytes(cidr))
 		if err != nil {
 			return
 		}

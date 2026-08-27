@@ -2,22 +2,22 @@ package nradix
 
 import "math/bits"
 
-type tree6[T any] struct {
-	root  *node6[T]
-	free  *node6[T]
-	alloc []node6[T]
+type tree[T any] struct {
+	root  *node[T]
+	free  *node[T]
+	alloc []node[T]
 }
 
-func newTree6[T any](preallocate int) (t *tree6[T]) {
-	t = &tree6[T]{}
+func newTree[T any](preallocate int) (t *tree[T]) {
+	t = &tree[T]{}
 	if preallocate > 0 {
-		t.alloc = make([]node6[T], 0, preallocate)
+		t.alloc = make([]node[T], 0, preallocate)
 	}
 	t.root = t.newNode()
 	return
 }
 
-func (t *tree6[T]) newNode() (p *node6[T]) {
+func (t *tree[T]) newNode() (p *node[T]) {
 	if t.free != nil {
 		p = t.free
 		t.free = p.right
@@ -27,7 +27,7 @@ func (t *tree6[T]) newNode() (p *node6[T]) {
 
 	ln := len(t.alloc)
 	if ln == cap(t.alloc) {
-		t.alloc = make([]node6[T], 0, ln+allocChunkGrowth)
+		t.alloc = make([]node[T], 0, ln+allocChunkGrowth)
 		ln = 0
 	}
 	t.alloc = t.alloc[:ln+1]
@@ -37,16 +37,16 @@ func (t *tree6[T]) newNode() (p *node6[T]) {
 
 // release clears the node so a freed prefix stops keeping its value alive;
 // right doubles as the free-list link.
-func countnode6[T any](n *node6[T]) int {
+func countNodes[T any](n *node[T]) int {
 	if n == nil {
 		return 0
 	}
-	return 1 + countnode6(n.left) + countnode6(n.right)
+	return 1 + countNodes(n.left) + countNodes(n.right)
 }
 
 // clone copies the subtree depth first, so a node and its descendants land in
 // the arena next to each other.
-func (t *tree6[T]) clone(src *node6[T]) (dst *node6[T]) {
+func (t *tree[T]) clone(src *node[T]) (dst *node[T]) {
 	if src == nil {
 		return
 	}
@@ -57,18 +57,18 @@ func (t *tree6[T]) clone(src *node6[T]) (dst *node6[T]) {
 	return
 }
 
-func (t *tree6[T]) compact() {
-	fresh := &tree6[T]{alloc: make([]node6[T], 0, countnode6(t.root))}
+func (t *tree[T]) compact() {
+	fresh := &tree[T]{alloc: make([]node[T], 0, countNodes(t.root))}
 	fresh.root = fresh.clone(t.root)
 	*t = *fresh
 }
 
-func (t *tree6[T]) release(n *node6[T]) {
-	*n = node6[T]{right: t.free}
+func (t *tree[T]) release(n *node[T]) {
+	*n = node[T]{right: t.free}
 	t.free = n
 }
 
-func (t *tree6[T]) releaseSubtree(n *node6[T]) {
+func (t *tree[T]) releaseSubtree(n *node[T]) {
 	if n == nil {
 		return
 	}
@@ -77,7 +77,7 @@ func (t *tree6[T]) releaseSubtree(n *node6[T]) {
 	t.release(n)
 }
 
-func (t *tree6[T]) insert(ip, mask uint128, val T, overwrite bool) (err error) {
+func (t *tree[T]) insert(ip, mask uint128, val T, overwrite bool) (err error) {
 	plen := plenOf128(mask)
 	ip = and128(ip, mask)
 
@@ -109,14 +109,14 @@ func (t *tree6[T]) insert(ip, mask uint128, val T, overwrite bool) (err error) {
 	}
 }
 
-func (t *tree6[T]) newLeaf(ip uint128, plen uint8, val T) (leaf *node6[T]) {
+func (t *tree[T]) newLeaf(ip uint128, plen uint8, val T) (leaf *node[T]) {
 	leaf = t.newNode()
 	leaf.prefix, leaf.plen = ip, plen
 	leaf.setValue(val)
 	return
 }
 
-func (t *tree6[T]) split(child *node6[T], c uint8, ip uint128, plen uint8, val T) (top *node6[T]) {
+func (t *tree[T]) split(child *node[T], c uint8, ip uint128, plen uint8, val T) (top *node[T]) {
 	top = t.newLeaf(ip, plen, val)
 	if c < plen {
 		fork := t.newNode()
@@ -132,7 +132,7 @@ func (t *tree6[T]) split(child *node6[T], c uint8, ip uint128, plen uint8, val T
 // plen rides along from the parent's cplen mirror, so each level costs a single
 // dependent load. At plen 128 the masked shift picks a garbage direction, which
 // is safe: a /128 node cannot have children.
-func (t *tree6[T]) findHost(ip uint128) (val T, found bool) {
+func (t *tree[T]) findHost(ip uint128) (val T, found bool) {
 	n := t.root
 	plen := uint8(0)
 	for plen < ipv6HalfMaskLength {
@@ -167,7 +167,7 @@ func (t *tree6[T]) findHost(ip uint128) (val T, found bool) {
 	}
 }
 
-func (t *tree6[T]) find(ip, mask uint128) (val T, found bool) {
+func (t *tree[T]) find(ip, mask uint128) (val T, found bool) {
 	if mask == fullMask128 {
 		return t.findHost(ip)
 	}
@@ -216,11 +216,11 @@ func (t *tree6[T]) find(ip, mask uint128) (val T, found bool) {
 	}
 }
 
-func (t *tree6[T]) delete(ip, mask uint128, wholeRange bool) (err error) {
+func (t *tree[T]) delete(ip, mask uint128, wholeRange bool) (err error) {
 	plen := plenOf128(mask)
 	ip = and128(ip, mask)
 
-	var parents [ipv6MaxMaskLength + 1]*node6[T]
+	var parents [ipv6MaxMaskLength + 1]*node[T]
 	depth := 0
 
 	n := t.root
@@ -270,7 +270,7 @@ func (t *tree6[T]) delete(ip, mask uint128, wholeRange bool) (err error) {
 	return
 }
 
-func (t *tree6[T]) collapse(parents []*node6[T]) {
+func (t *tree[T]) collapse(parents []*node[T]) {
 	for i := len(parents) - 1; i > 0; i-- {
 		n := parents[i]
 		if n.set || n.forks() {

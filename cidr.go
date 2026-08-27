@@ -4,18 +4,17 @@ import (
 	"bytes"
 	"encoding/binary"
 	"net/netip"
-	"strings"
 )
 
 const (
-	ipv4HostMask = 0xffffffff
-
 	ipv4MaxMaskLength  = 32
 	ipv6HalfMaskLength = 64
 	ipv6MaxMaskLength  = 128
 
 	ipv4OctetMax = 255
 	ipv4DotCount = 3
+
+	maskDigitsMax = 3
 
 	ipv4In6Prefix uint64 = 0xffff << 32
 )
@@ -27,20 +26,23 @@ func addrTo128(addr netip.Addr) (ip uint128) {
 	return
 }
 
-func addrTo32(addr netip.Addr) (ip uint32, ok bool) {
-	if !addr.Is4() && !addr.Is4In6() {
-		return
-	}
-	b := addr.As4()
-	return binary.BigEndian.Uint32(b[:]), true
-}
-
 func ip4To6(ip uint32) uint128 {
 	return uint128{lo: ipv4In6Prefix | uint64(ip)}
 }
 
-func isBareIPv4(addr string) bool {
-	return strings.IndexByte(addr, ':') < 0
+// maskSep finds the '/' without scanning the whole string: a mask is at most
+// three digits, so it can only sit in the last few bytes.
+func maskSep(cidr []byte) int {
+	for i := len(cidr) - 2; i >= 0 && i >= len(cidr)-maskDigitsMax-1; i-- {
+		if cidr[i] == '/' {
+			return i
+		}
+	}
+	return -1
+}
+
+func isBareIPv4(addr []byte) bool {
+	return bytes.IndexByte(addr, ':') < 0
 }
 
 func loadIP4(ipStr []byte) (ip uint32, err error) {
@@ -82,32 +84,7 @@ func loadIP4(ipStr []byte) (ip uint32, err error) {
 	return
 }
 
-func parseCIDR4(cidr []byte) (ip, mask uint32, err error) {
-	mask = ipv4HostMask
-
-	if p := bytes.LastIndexByte(cidr, '/'); p > 0 {
-		off := uint(p + 1)
-		if off >= uint(len(cidr)) {
-			return 0, 0, ErrBadIP
-		}
-		var m uint32
-		for _, c := range cidr[p+1:] {
-			if c -= '0'; c > 9 {
-				return 0, 0, ErrBadIP
-			}
-			if m = m*10 + uint32(c); m > ipv4MaxMaskLength {
-				return 0, 0, ErrBadIP
-			}
-		}
-		mask <<= ipv4MaxMaskLength - m
-		cidr = cidr[:p]
-	}
-
-	ip, err = loadIP4(cidr)
-	return
-}
-
-func parseCIDR6(cidr string) (ip, mask uint128, err error) {
+func parseCIDR6(cidr []byte) (ip, mask uint128, err error) {
 	var (
 		bare    = isBareIPv4(cidr)
 		maskLen uint32
@@ -115,13 +92,16 @@ func parseCIDR6(cidr string) (ip, mask uint128, err error) {
 	)
 	mask = uint128{^uint64(0), ^uint64(0)}
 
-	if p := strings.LastIndexByte(cidr, '/'); p > 0 {
+	if p := maskSep(cidr); p > 0 {
 		off := uint(p + 1)
 		if off >= uint(len(cidr)) {
 			goto ERROR
 		}
-		for _, c := range []byte(cidr[p+1:]) {
+		for _, c := range cidr[p+1:] {
 			if c -= '0'; c > 9 {
+				goto ERROR
+			}
+			if maskLen == 0 && c == 0 && len(cidr) > p+2 {
 				goto ERROR
 			}
 			if maskLen = maskLen*10 + uint32(c); maskLen > ipv6MaxMaskLength {
@@ -131,7 +111,16 @@ func parseCIDR6(cidr string) (ip, mask uint128, err error) {
 		cidr = cidr[:p]
 
 		if bare {
-			maskLen += ipv6MaxMaskLength - ipv4MaxMaskLength
+			// a bare IPv4 prefix always lands at /96 or deeper, so the high
+			// half stays all ones and needs no shifting
+			if maskLen > ipv4MaxMaskLength {
+				goto ERROR
+			}
+			mask.lo <<= ipv4MaxMaskLength - maskLen
+			if v4, err = loadIP4(cidr); err != nil {
+				goto ERROR
+			}
+			return ip4To6(v4), mask, nil
 		}
 		if maskLen > ipv6MaxMaskLength {
 			goto ERROR
@@ -145,13 +134,13 @@ func parseCIDR6(cidr string) (ip, mask uint128, err error) {
 	}
 
 	if bare {
-		if v4, err = loadIP4(stringToBytes(cidr)); err != nil {
+		if v4, err = loadIP4(cidr); err != nil {
 			goto ERROR
 		}
 		return ip4To6(v4), mask, nil
 	}
 
-	if ip, err = parseAddr6(stringToBytes(cidr)); err != nil {
+	if ip, err = parseAddr6(cidr); err != nil {
 		goto ERROR
 	}
 
